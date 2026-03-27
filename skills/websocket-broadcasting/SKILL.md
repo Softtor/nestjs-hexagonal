@@ -1,6 +1,7 @@
 ---
 name: websocket-broadcasting
 description: Use when broadcasting domain events to the frontend via WebSocket (Socket.IO). Covers WsGatewayPort abstraction, gateway with Redis adapter, JWT auth, room-based multi-tenant isolation, and frontend consumption. One simple pattern — no over-engineering.
+argument-hint: Entity or event (e.g., "Order", "OrderCreatedEvent", "gateway setup")
 ---
 
 # WebSocket Broadcasting

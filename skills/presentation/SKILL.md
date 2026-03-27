@@ -1,6 +1,7 @@
 ---
 name: presentation
 description: Use when creating presentation layer artifacts for a NestJS bounded context — REST controllers, request DTOs with class-validator, Swagger decorators, custom validators, error filters, or API documentation. Covers the HTTP boundary with proper validation and error mapping.
+argument-hint: Entity or artifact (e.g., "controller Orders", "dto CreateOrder", "error-filter")
 ---
 
 # Presentation Layer

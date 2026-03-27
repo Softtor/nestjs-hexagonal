@@ -1,6 +1,7 @@
 ---
 name: infrastructure
 description: Use when creating infrastructure layer artifacts for a NestJS bounded context — Prisma repositories, in-memory repositories (testing), model mappers, NestJS module wiring, adapters (port implementations), or event handler infrastructure. Repository is pure persistence with no event dispatch.
+argument-hint: Artifact type or entity (e.g., "repo Order", "module Orders", "adapter PaymentGateway")
 ---
 
 # Infrastructure Layer

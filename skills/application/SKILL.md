@@ -1,6 +1,7 @@
 ---
 name: application
 description: Use when creating application layer artifacts for a NestJS bounded context — use cases, CQRS command/query handlers, DTOs, ports (cross-module interfaces), application services, or read model projections. Supports three patterns: plain UseCase (A), CQRS native (B), and Handler-as-Orchestrator (C).
+argument-hint: Use case or pattern (e.g., "CreateOrder", "Pattern B", "port PaymentGateway")
 ---
 
 > **Note:** Examples use `companyId` as the multi-tenant identifier. Replace with your project's term (e.g., `organizationId`, `tenantId`).

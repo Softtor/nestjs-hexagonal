@@ -1,6 +1,7 @@
 ---
 name: event-listeners
 description: Use when creating event listeners that react to domain events — same-BC side effects (projections, audit, cache), cross-BC reactions (another bounded context consuming events), or bridge listeners (WebSocket broadcast, RabbitMQ publish, email). Covers listener taxonomy, placement rules, Strategy+Gateway pattern for fan-out, and anti-over-engineering criteria.
+argument-hint: Event and type (e.g., "OrderCreatedEvent broadcast", "cross-bc OrderPaid", "projection Order")
 ---
 
 # Event Listeners

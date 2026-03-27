@@ -1,6 +1,7 @@
 ---
 name: using-nestjs-hexagonal
 description: Meta-skill that routes NestJS development tasks to the correct nestjs-hexagonal skill or agent. Activates when working on NestJS projects with hexagonal architecture, DDD, CQRS, bounded contexts, entities, value objects, repositories, event listeners, WebSocket broadcasting, or any architectural task in a NestJS codebase. This skill should be checked FIRST before any implementation in a NestJS hexagonal project.
+argument-hint: What you want to do (e.g., "create entity", "review module", "debug event")
 ---
 
 # Using NestJS Hexagonal

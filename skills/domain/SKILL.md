@@ -1,6 +1,7 @@
 ---
 name: domain
 description: Use when creating domain layer artifacts for a NestJS bounded context — entities (AggregateRoot), value objects, domain events, repository interfaces, domain services, validators, or data builders. Covers Hexagonal Architecture + DDD patterns with NestJS CQRS native event support.
+argument-hint: Artifact type or entity name (e.g., "entity Order", "vo OrderStatus", "event OrderCreated")
 ---
 
 # Domain Layer

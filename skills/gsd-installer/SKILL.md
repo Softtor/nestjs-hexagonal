@@ -1,6 +1,7 @@
 ---
 name: gsd-installer
 description: Configures a NestJS project to use the nestjs-hexagonal plugin with GSD workflow. Adds skill references to CLAUDE.md, creates GSD-compatible phase templates, and maps GSD phases to plugin agents. Use when setting up a new project with GSD + hexagonal architecture, or when asked to "install hexagonal for GSD", "configure GSD with hexagonal", or "setup nestjs-hexagonal".
+argument-hint: (no arguments needed)
 allowed-tools:
   - Read
   - Write
