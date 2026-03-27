@@ -21,7 +21,7 @@ import { PaymentGatewayAdapter } from './adapters/payment-gateway.adapter';
 
 // Infrastructure — listeners
 import { OrderCreatedBroadcastHandler } from './listeners/order-created-broadcast.handler';
-import { OrderPaidInvoiceHandler } from './listeners/order-paid-invoice.handler';
+import { OrderPaidIntegrationHandler, ORDER_INTEGRATION_EVENTS_TOKEN } from './listeners/order-paid-invoice.handler';
 
 // Infrastructure — controllers
 import { OrdersController } from './controllers/orders.controller';
@@ -31,7 +31,7 @@ import { OrdersController } from './controllers/orders.controller';
 
 const commandHandlers = [CreateOrderHandler, CancelOrderHandler];
 const queryHandlers = [GetOrderHandler, ListOrdersHandler];
-const eventHandlers = [OrderCreatedBroadcastHandler, OrderPaidInvoiceHandler];
+const eventHandlers = [OrderCreatedBroadcastHandler, OrderPaidIntegrationHandler];
 
 @Module({
   imports: [

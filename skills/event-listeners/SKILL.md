@@ -99,58 +99,139 @@ See `references/same-bc-listeners.md` for full templates.
 
 ## Section 2: Cross-BC Listener
 
-Lives in the **CONSUMING** bounded context, NOT the emitting one. This is the most important placement rule.
+Cross-BC communication uses the **Integration Event Port** pattern with an **Anti-Corruption Layer (ACL)**:
+
+- **Domain Event** = INTERNAL to the BC. Never leaves the bounded context.
+- **Integration Event** = PUBLIC contract between BCs. Always via port/adapter.
+- **ACL** = Adapter in the consuming BC that translates external model to internal model.
+
+**The 3-part flow:**
 
 ```
-OrderBC emits OrderCreatedEvent
-  → BillingBC has OrderCreatedInvoiceHandler in billing/infrastructure/listeners/
-  → NotificationBC has OrderCreatedNotifyHandler in notification/infrastructure/listeners/
+OrderBC (emitter)                      InvoicingBC (consumer)
+  domain/events/order-paid.event.ts
+  application/ports/
+    order-integration-events.port.ts  ←  implemented by →  InvoiceIntegrationAdapter
+  infrastructure/listeners/
+    order-paid-integration.handler.ts                         ↓ dispatches CreateInvoiceCommand
 ```
 
-**Importing events cross-BC is safe** because events are immutable value objects with no transitive dependencies:
+**Part 1 — Port definition (in emitting BC):**
 
 ```typescript
-// billing/infrastructure/listeners/order-created-invoice.handler.ts
+// orders/application/ports/order-integration-events.port.ts
+export const ORDER_INTEGRATION_EVENTS_TOKEN = Symbol('OrderIntegrationEvents');
+
+export interface OrderIntegrationEventsPort {
+  orderPaid(payload: {
+    orderId: string;
+    organizationId: string;
+    customerId: string;
+    total: number;
+    currency: string;
+  }): Promise<void>;
+}
+```
+
+**Part 2 — Publisher handler (in emitting BC):**
+
+```typescript
+// orders/infrastructure/listeners/order-paid-integration.handler.ts
 import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
-import { CommandBus } from '@nestjs/cqrs';
+import { Inject, Logger } from '@nestjs/common';
+import { OrderPaidEvent } from '../../domain/events/order-paid.event';
+import {
+  ORDER_INTEGRATION_EVENTS_TOKEN,
+  type OrderIntegrationEventsPort,
+} from '../../application/ports/order-integration-events.port';
 
-// Import event from emitting BC — safe, events are pure data
-import { OrderCreatedEvent } from '@/enterprise/orders/domain/events/order-created.event';
+@EventsHandler(OrderPaidEvent)
+export class OrderPaidIntegrationHandler implements IEventHandler<OrderPaidEvent> {
+  private readonly logger = new Logger(OrderPaidIntegrationHandler.name);
 
-// Import own command
-import { CreateInvoiceCommand } from '../../application/commands/create-invoice.command';
+  constructor(
+    @Inject(ORDER_INTEGRATION_EVENTS_TOKEN)
+    private readonly integrationEvents: OrderIntegrationEventsPort,
+  ) {}
 
-@EventsHandler(OrderCreatedEvent)
-export class OrderCreatedInvoiceHandler implements IEventHandler<OrderCreatedEvent> {
-  private readonly logger = new Logger(OrderCreatedInvoiceHandler.name);
-
-  constructor(private readonly commandBus: CommandBus) {}
-
-  async handle(event: OrderCreatedEvent): Promise<void> {
+  async handle(event: OrderPaidEvent): Promise<void> {
     try {
-      // Cross-BC listener dispatches a COMMAND in its own BC
-      await this.commandBus.execute(
-        new CreateInvoiceCommand(
-          event.organizationId,
-          event.aggregateId,  // orderId
-          event.total,
-        ),
-      );
+      await this.integrationEvents.orderPaid({
+        orderId: event.aggregateId,
+        organizationId: event.organizationId,
+        customerId: event.customerId,
+        total: event.total,
+        currency: event.currency,
+      });
     } catch (error) {
-      this.logger.error(`[OrderCreatedInvoice] Failed to create invoice:`, error);
+      this.logger.error(
+        `Failed to publish order.paid integration event for ${event.aggregateId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
     }
   }
 }
 ```
 
-**Key rules for cross-BC listeners:**
-1. Listener lives in the CONSUMING BC's `infrastructure/listeners/`
-2. Import the event class directly — no shared events module needed
-3. Listener dispatches a COMMAND in its own BC — never calls another BC's service directly
-4. try/catch mandatory — cross-BC failure must not affect emitting BC
-5. Register the listener in the CONSUMING BC's module providers
+**Part 3 — Consumer adapter (ACL in consuming BC):**
 
-See `references/cross-bc-listeners.md` for full patterns.
+```typescript
+// invoicing/infrastructure/adapters/order-integration-events.adapter.ts
+import { Injectable } from '@nestjs/common';
+import { CommandBus } from '@nestjs/cqrs';
+import { type OrderIntegrationEventsPort } from '@/enterprise/orders/application/ports/order-integration-events.port';
+import { CreateInvoiceCommand } from '../../application/commands/create-invoice.command';
+
+@Injectable()
+export class OrderIntegrationEventsAdapter implements OrderIntegrationEventsPort {
+  constructor(private readonly commandBus: CommandBus) {}
+
+  async orderPaid(payload: {
+    orderId: string;
+    organizationId: string;
+    customerId: string;
+    total: number;
+    currency: string;
+  }): Promise<void> {
+    // ACL: translate Orders BC model to Invoicing BC model
+    await this.commandBus.execute(
+      new CreateInvoiceCommand(
+        payload.organizationId,
+        payload.orderId,
+        payload.customerId,
+        payload.total,
+        payload.currency,
+      ),
+    );
+  }
+}
+```
+
+**Module wiring — emitter BC provides the token:**
+
+```typescript
+// orders/orders.module.ts
+{
+  provide: ORDER_INTEGRATION_EVENTS_TOKEN,
+  useClass: OrderIntegrationEventsAdapter,  // wired from InvoicingModule via DI
+}
+```
+
+**Key rules:**
+1. Orders BC NEVER imports from Invoicing BC
+2. Invoicing BC implements the port that Orders BC defines
+3. The ACL adapter is the only place that knows both models
+4. try/catch mandatory in the publisher handler — cross-BC failure must not affect emitting BC
+
+**3 approaches — choose by deployment context:**
+
+| Approach | When to use |
+|---|---|
+| **Integration Event Port** (this pattern) | Modular monolith — recommended |
+| **String events via EventEmitter2** | Simpler, but loses type-safety |
+| **Message broker (RabbitMQ/Kafka)** | Microservices — maximum decoupling |
+
+See `references/cross-bc-listeners.md` for full templates and testing patterns.
 
 ---
 

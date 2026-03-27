@@ -1,70 +1,102 @@
 # Cross-BC Listeners
 
-Listeners that react to events emitted by OTHER bounded contexts. Live in the CONSUMING BC, NOT the emitting one.
+Communication between bounded contexts uses the **Integration Event Port** pattern with an **Anti-Corruption Layer (ACL)**. Direct CommandBus dispatch from a listener in BC A into BC B creates implicit coupling — avoid it.
 
 ---
 
-## Placement Rule
-
-```
-OrderBC (emitter)                    BillingBC (consumer)
-  domain/events/                       infrastructure/listeners/
-    order-created.event.ts               order-created-invoice.handler.ts
-                                         ← imports event from OrderBC
-                                         ← dispatches CreateInvoiceCommand in BillingBC
-```
-
-**Why consumer owns the listener:**
-- Listener logic belongs with the code that uses it
-- Reduces public API surface of emitting BC
-- Each BC owns its reactions to external events
-- Emitting BC doesn't need to know who listens
-
----
-
-## Full Template
+## Why Direct CommandBus Dispatch Is Wrong
 
 ```typescript
-// billing/infrastructure/listeners/order-created-invoice.handler.ts
-import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
-import { CommandBus } from '@nestjs/cqrs';
-import { Logger } from '@nestjs/common';
+// WRONG — BC A's listener imports BC B's command
+import { CreateInvoiceCommand } from '@/enterprise/invoicing/application/commands/create-invoice.command';
 
-// Import event from emitting BC — SAFE (events are pure data, no deps)
-import { OrderCreatedEvent } from '@/enterprise/orders/domain/events/order-created.event';
-
-// Import own command
-import { CreateInvoiceCommand } from '../../application/commands/create-invoice.command';
-
-@EventsHandler(OrderCreatedEvent)
-export class OrderCreatedInvoiceHandler implements IEventHandler<OrderCreatedEvent> {
-  private readonly logger = new Logger(OrderCreatedInvoiceHandler.name);
-
+@EventsHandler(OrderPaidEvent)
+export class OrderPaidInvoiceHandler {
   constructor(private readonly commandBus: CommandBus) {}
 
-  async handle(event: OrderCreatedEvent): Promise<void> {
+  async handle(event: OrderPaidEvent): Promise<void> {
+    // This creates a dependency: Orders BC → Invoicing BC
+    await this.commandBus.execute(new CreateInvoiceCommand(...));
+  }
+}
+```
+
+**Problems:**
+- Orders BC now knows Invoicing BC exists — coupling in the wrong direction
+- Changing `CreateInvoiceCommand` requires touching Orders BC
+- Import graph becomes a spider web as the system grows
+- The "consuming BC imports event from emitting BC" is fine; the reverse is not
+
+---
+
+## The Correct Pattern: Integration Event Port + ACL
+
+**Key principle:** BC A defines a port (interface). BC B implements it as an adapter (ACL). BC A NEVER imports from BC B.
+
+### Step 1 — Define the port in the emitting BC
+
+```typescript
+// orders/application/ports/order-integration-events.port.ts
+export const ORDER_INTEGRATION_EVENTS_TOKEN = Symbol('OrderIntegrationEvents');
+
+export interface OrderIntegrationEventsPort {
+  // One method per integration event — payload uses primitive types, not domain objects
+  orderPaid(payload: {
+    orderId: string;
+    organizationId: string;
+    customerId: string;
+    total: number;
+    currency: string;
+  }): Promise<void>;
+
+  orderCancelled(payload: {
+    orderId: string;
+    organizationId: string;
+    reason: string;
+  }): Promise<void>;
+}
+```
+
+**Rules for the port:**
+- Lives in `application/ports/` of the emitting BC
+- Payload uses primitive types only — no domain objects that would create transitive imports
+- One method per integration event
+- Async — cross-BC side effects may involve I/O
+
+### Step 2 — Publish via the port in a domain event handler
+
+```typescript
+// orders/infrastructure/listeners/order-paid-integration.handler.ts
+import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
+import { Inject, Logger } from '@nestjs/common';
+
+import { OrderPaidEvent } from '../../domain/events/order-paid.event';
+import {
+  ORDER_INTEGRATION_EVENTS_TOKEN,
+  type OrderIntegrationEventsPort,
+} from '../../application/ports/order-integration-events.port';
+
+@EventsHandler(OrderPaidEvent)
+export class OrderPaidIntegrationHandler implements IEventHandler<OrderPaidEvent> {
+  private readonly logger = new Logger(OrderPaidIntegrationHandler.name);
+
+  constructor(
+    @Inject(ORDER_INTEGRATION_EVENTS_TOKEN)
+    private readonly integrationEvents: OrderIntegrationEventsPort,
+  ) {}
+
+  async handle(event: OrderPaidEvent): Promise<void> {
     try {
-      // Guard: skip if not relevant to billing
-      if (event.total <= 0) {
-        this.logger.debug(`Skipping zero-amount order ${event.aggregateId}`);
-        return;
-      }
-
-      // Dispatch command in OWN bounded context
-      await this.commandBus.execute(
-        new CreateInvoiceCommand(
-          event.organizationId,
-          event.aggregateId,
-          event.total,
-          event.customerName,
-        ),
-      );
-
-      this.logger.log(`Invoice created for order ${event.aggregateId}`);
+      await this.integrationEvents.orderPaid({
+        orderId: event.aggregateId,
+        organizationId: event.organizationId,
+        customerId: event.customerId,
+        total: event.total,
+        currency: event.currency,
+      });
     } catch (error) {
-      // NEVER re-throw — cross-BC failure must not affect emitting BC
       this.logger.error(
-        `Failed to create invoice for order ${event.aggregateId}`,
+        `Failed to publish order.paid integration event for ${event.aggregateId}`,
         error instanceof Error ? error.stack : String(error),
       );
     }
@@ -72,154 +104,217 @@ export class OrderCreatedInvoiceHandler implements IEventHandler<OrderCreatedEve
 }
 ```
 
----
-
-## Why Event Imports Are Safe
-
-Events are immutable value objects. They have NO transitive dependencies:
+### Step 3 — Implement the ACL adapter in the consuming BC
 
 ```typescript
-// orders/domain/events/order-created.event.ts
-import { IEvent } from '@nestjs/cqrs';
+// invoicing/infrastructure/adapters/order-integration-events.adapter.ts
+import { Injectable } from '@nestjs/common';
+import { CommandBus } from '@nestjs/cqrs';
 
-export class OrderCreatedEvent implements IEvent {
-  constructor(
-    public readonly aggregateId: string,
-    public readonly organizationId: string,
-    public readonly total: number,
-    public readonly status: string,
-    public readonly customerName: string,
-    public readonly occurredOn: Date = new Date(),
-  ) {}
+// The consuming BC imports the PORT (interface) — not the emitting BC's internals
+import { type OrderIntegrationEventsPort } from '@/enterprise/orders/application/ports/order-integration-events.port';
+
+// The consuming BC's own command
+import { CreateInvoiceCommand } from '../../application/commands/create-invoice.command';
+import { CancelInvoiceCommand } from '../../application/commands/cancel-invoice.command';
+
+@Injectable()
+export class OrderIntegrationEventsAdapter implements OrderIntegrationEventsPort {
+  constructor(private readonly commandBus: CommandBus) {}
+
+  async orderPaid(payload: {
+    orderId: string;
+    organizationId: string;
+    customerId: string;
+    total: number;
+    currency: string;
+  }): Promise<void> {
+    // ACL: translate Orders BC model → Invoicing BC model
+    await this.commandBus.execute(
+      new CreateInvoiceCommand(
+        payload.organizationId,
+        payload.orderId,
+        payload.customerId,
+        payload.total,
+        payload.currency,
+      ),
+    );
+  }
+
+  async orderCancelled(payload: {
+    orderId: string;
+    organizationId: string;
+    reason: string;
+  }): Promise<void> {
+    await this.commandBus.execute(
+      new CancelInvoiceCommand(payload.organizationId, payload.orderId, payload.reason),
+    );
+  }
 }
-```
-
-This class imports ONLY `IEvent` from `@nestjs/cqrs`. No entity, no repository, no service. Safe to import from any BC without circular dependencies.
-
----
-
-## Cross-BC Listener Patterns
-
-### Pattern A: Dispatch Own Command (preferred)
-
-Listener transforms the external event into a command in its own BC.
-
-```typescript
-async handle(event: OrderCreatedEvent): Promise<void> {
-  await this.commandBus.execute(new CreateInvoiceCommand(...));
-}
-```
-
-**Best for:** When the reaction requires its own domain logic (create entity, validate, persist).
-
-### Pattern B: Direct Service Call (simple cases)
-
-Listener calls an application service directly.
-
-```typescript
-async handle(event: OrderCreatedEvent): Promise<void> {
-  await this.notificationService.sendOrderConfirmation(event.organizationId, event.aggregateId);
-}
-```
-
-**Best for:** Simple side effects without domain logic (send notification, log analytics).
-
-### Pattern C: Multiple Events from Same BC
-
-When a BC reacts to multiple events from another BC, group listeners in a directory:
-
-```
-billing/infrastructure/listeners/orders/
-  order-created-invoice.handler.ts
-  order-refunded-credit-note.handler.ts
-  order-cancelled-void-invoice.handler.ts
 ```
 
 ---
 
 ## Module Wiring
 
-Register in the CONSUMING module:
+### Emitting BC module
+
+The emitting BC module provides the token and accepts the adapter class from outside:
 
 ```typescript
-// billing/infrastructure/billing.module.ts
+// orders/orders.module.ts
+import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
-
-const CrossBcListeners = [
-  OrderCreatedInvoiceHandler,
-  OrderRefundedCreditNoteHandler,
-];
+import { ORDER_INTEGRATION_EVENTS_TOKEN } from './application/ports/order-integration-events.port';
+import { OrderPaidIntegrationHandler } from './infrastructure/listeners/order-paid-integration.handler';
 
 @Module({
   imports: [CqrsModule],
   providers: [
-    ...CrossBcListeners,
-    // ... own providers
+    OrderPaidIntegrationHandler,
+    // Token is provided by the consuming module via forFeature / dynamic module,
+    // or wired in the root AppModule:
+    // { provide: ORDER_INTEGRATION_EVENTS_TOKEN, useClass: OrderIntegrationEventsAdapter }
   ],
+  exports: [ORDER_INTEGRATION_EVENTS_TOKEN],
 })
-export class BillingModule {}
+export class OrdersModule {}
 ```
 
-**No need to import OrdersModule** — the event flows through the global EventBus. Only the event CLASS is imported.
+### Root wiring (AppModule or feature module)
+
+```typescript
+// app.module.ts
+import { OrdersModule } from './enterprise/orders/orders.module';
+import { InvoicingModule } from './enterprise/invoicing/invoicing.module';
+import { ORDER_INTEGRATION_EVENTS_TOKEN } from './enterprise/orders/application/ports/order-integration-events.port';
+import { OrderIntegrationEventsAdapter } from './enterprise/invoicing/infrastructure/adapters/order-integration-events.adapter';
+
+@Module({
+  imports: [OrdersModule, InvoicingModule],
+  providers: [
+    {
+      provide: ORDER_INTEGRATION_EVENTS_TOKEN,
+      useClass: OrderIntegrationEventsAdapter,
+    },
+  ],
+})
+export class AppModule {}
+```
 
 ---
 
-## Circular Dependency Prevention
+## The 3 Approaches
 
+| Approach | Coupling | Type Safety | When to Use |
+|---|---|---|---|
+| **Integration Event Port** (this file) | Low — port-based | Full | Modular monolith — recommended |
+| **String events (EventEmitter2)** | Low | None (string keys) | Quick prototypes or simple fan-out |
+| **Message broker (RabbitMQ/Kafka)** | Minimal | Via schema/Zod | Microservices or async durability needed |
+
+### String events (EventEmitter2) — simpler but no type-safety
+
+```typescript
+// Emitter BC
+this.eventEmitter.emit('order.paid', { orderId, organizationId, total, currency });
+
+// Consumer BC — subscribes by string key
+@OnEvent('order.paid')
+async handleOrderPaid(payload: { orderId: string; /* ... */ }): Promise<void> {
+  await this.commandBus.execute(new CreateInvoiceCommand(...));
+}
 ```
-SAFE:
-  OrderBC → emits OrderCreatedEvent
-  BillingBC → imports OrderCreatedEvent (pure data class)
-  BillingBC → dispatches CreateInvoiceCommand (own BC)
 
-UNSAFE (never do):
-  OrderBC → imports BillingService (creates circular dep)
-  BillingBC → imports OrderRepository (crosses BC boundary)
-```
-
-**Rule:** Cross-BC listeners dispatch commands in their OWN BC. They never call services or repositories from the emitting BC.
+**When to choose:** Small team, few BCs, speed over correctness. The key `'order.paid'` is a runtime string — no compile-time safety.
 
 ---
 
 ## Testing
 
+### Test the publisher handler
+
 ```typescript
-describe('OrderCreatedInvoiceHandler', () => {
-  let handler: OrderCreatedInvoiceHandler;
+describe('OrderPaidIntegrationHandler', () => {
+  let handler: OrderPaidIntegrationHandler;
+  let integrationEvents: { orderPaid: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    integrationEvents = { orderPaid: vi.fn().mockResolvedValue(undefined) };
+    handler = new OrderPaidIntegrationHandler(integrationEvents as OrderIntegrationEventsPort);
+  });
+
+  it('should call orderPaid with correct payload', async () => {
+    const event = new OrderPaidEvent('order-1', 'org-1', 'customer-1', 500, 'BRL');
+
+    await handler.handle(event);
+
+    expect(integrationEvents.orderPaid).toHaveBeenCalledWith({
+      orderId: 'order-1',
+      organizationId: 'org-1',
+      customerId: 'customer-1',
+      total: 500,
+      currency: 'BRL',
+    });
+  });
+
+  it('should not throw when integration port fails', async () => {
+    integrationEvents.orderPaid.mockRejectedValue(new Error('downstream down'));
+    const event = new OrderPaidEvent('order-1', 'org-1', 'customer-1', 500, 'BRL');
+
+    await expect(handler.handle(event)).resolves.toBeUndefined();
+  });
+});
+```
+
+### Test the ACL adapter
+
+```typescript
+describe('OrderIntegrationEventsAdapter', () => {
+  let adapter: OrderIntegrationEventsAdapter;
   let commandBus: { execute: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    commandBus = { execute: vi.fn() };
-    handler = new OrderCreatedInvoiceHandler(commandBus as any);
+    commandBus = { execute: vi.fn().mockResolvedValue(undefined) };
+    adapter = new OrderIntegrationEventsAdapter(commandBus as unknown as CommandBus);
   });
 
-  it('should dispatch CreateInvoiceCommand', async () => {
-    const event = new OrderCreatedEvent('order-1', 'org-1', 500, 'PENDING', 'John');
-
-    await handler.handle(event);
+  it('should dispatch CreateInvoiceCommand with translated payload', async () => {
+    await adapter.orderPaid({
+      orderId: 'order-1',
+      organizationId: 'org-1',
+      customerId: 'customer-1',
+      total: 500,
+      currency: 'BRL',
+    });
 
     expect(commandBus.execute).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: 'org-1',
         orderId: 'order-1',
-        amount: 500,
+        customerId: 'customer-1',
+        total: 500,
+        currency: 'BRL',
       }),
     );
   });
-
-  it('should skip zero-amount orders', async () => {
-    const event = new OrderCreatedEvent('order-1', 'org-1', 0, 'PENDING', 'John');
-
-    await handler.handle(event);
-
-    expect(commandBus.execute).not.toHaveBeenCalled();
-  });
-
-  it('should not throw on command failure', async () => {
-    commandBus.execute.mockRejectedValue(new Error('DB error'));
-    const event = new OrderCreatedEvent('order-1', 'org-1', 500, 'PENDING', 'John');
-
-    await expect(handler.handle(event)).resolves.toBeUndefined();
-  });
 });
+```
+
+---
+
+## Anti-Patterns
+
+```
+WRONG: Orders BC imports Invoicing command
+  orders/infrastructure/listeners/order-paid.handler.ts
+    import { CreateInvoiceCommand } from '@/enterprise/invoicing/...'  ← coupling
+
+WRONG: Orders BC imports Invoicing service
+  orders/infrastructure/listeners/order-paid.handler.ts
+    import { InvoiceService } from '@/enterprise/invoicing/...'  ← coupling
+
+WRONG: EventsHandler in emitting BC dispatches cross-BC command directly via CommandBus
+  — CommandBus is global, so the command will be routed to the wrong handler at runtime
+
+CORRECT: Orders BC defines port → Invoicing BC implements adapter → wired at app root
 ```

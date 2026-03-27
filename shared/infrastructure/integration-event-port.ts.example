@@ -1,0 +1,125 @@
+// Generic Integration Event Port pattern
+// Each BC that emits integration events defines a port like this.
+//
+// Naming convention:
+//   Token:     <BC>_INTEGRATION_EVENTS_TOKEN
+//   Interface: <Bc>IntegrationEventsPort
+//   Adapter:   <Bc>IntegrationEventsAdapter  (lives in the CONSUMING BC)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. PORT DEFINITION — lives in emitting BC: application/ports/
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MY_INTEGRATION_EVENTS_TOKEN = Symbol('MyIntegrationEvents');
+
+export interface MyIntegrationEventsPort {
+  // One method per integration event.
+  // Payload MUST use primitive types only — no domain objects or VOs.
+  entityCreated(payload: {
+    id: string;
+    organizationId: string;
+    name: string;
+    createdAt: string; // ISO string — not Date
+  }): Promise<void>;
+
+  entityUpdated(payload: {
+    id: string;
+    organizationId: string;
+    changes: Record<string, unknown>;
+  }): Promise<void>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. PUBLISHER HANDLER — lives in emitting BC: infrastructure/listeners/
+// ─────────────────────────────────────────────────────────────────────────────
+
+// import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
+// import { Inject, Logger } from '@nestjs/common';
+// import { MyEntityCreatedEvent } from '../../domain/events/my-entity-created.event';
+// import { MY_INTEGRATION_EVENTS_TOKEN, type MyIntegrationEventsPort } from '../../application/ports/my-integration-events.port';
+//
+// @EventsHandler(MyEntityCreatedEvent)
+// export class MyEntityCreatedIntegrationHandler implements IEventHandler<MyEntityCreatedEvent> {
+//   private readonly logger = new Logger(MyEntityCreatedIntegrationHandler.name);
+//
+//   constructor(
+//     @Inject(MY_INTEGRATION_EVENTS_TOKEN)
+//     private readonly integrationEvents: MyIntegrationEventsPort,
+//   ) {}
+//
+//   async handle(event: MyEntityCreatedEvent): Promise<void> {
+//     try {
+//       await this.integrationEvents.entityCreated({
+//         id: event.aggregateId,
+//         organizationId: event.organizationId,
+//         name: event.name,
+//         createdAt: event.occurredOn.toISOString(),
+//       });
+//     } catch (error) {
+//       this.logger.error(
+//         `Failed to publish entity.created integration event for ${event.aggregateId}`,
+//         error instanceof Error ? error.stack : String(error),
+//       );
+//     }
+//   }
+// }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. ACL ADAPTER — lives in CONSUMING BC: infrastructure/adapters/
+// ─────────────────────────────────────────────────────────────────────────────
+
+// @Injectable()
+// export class MyIntegrationEventsAdapter implements MyIntegrationEventsPort {
+//   constructor(private readonly commandBus: CommandBus) {}
+//
+//   async entityCreated(payload: {
+//     id: string;
+//     organizationId: string;
+//     name: string;
+//     createdAt: string;
+//   }): Promise<void> {
+//     // ACL: translate emitting BC model → consuming BC model
+//     await this.commandBus.execute(
+//       new MyConsumingBcCommand(payload.organizationId, payload.id, payload.name),
+//     );
+//   }
+//
+//   async entityUpdated(payload: {
+//     id: string;
+//     organizationId: string;
+//     changes: Record<string, unknown>;
+//   }): Promise<void> {
+//     await this.commandBus.execute(
+//       new AnotherConsumingBcCommand(payload.id, payload.changes),
+//     );
+//   }
+// }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. MODULE WIRING — in AppModule (or shared root module)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// @Module({
+//   imports: [EmittingBcModule, ConsumingBcModule],
+//   providers: [
+//     {
+//       provide: MY_INTEGRATION_EVENTS_TOKEN,
+//       useClass: MyIntegrationEventsAdapter,
+//     },
+//   ],
+// })
+// export class AppModule {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RULES
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 1. Emitting BC NEVER imports from consuming BC
+// 2. Consuming BC implements the port the emitting BC defines
+// 3. Port payloads use primitive types only (string, number, boolean, Record)
+// 4. Publisher handler has try/catch — cross-BC failure must not affect emitting BC
+// 5. ACL adapter is the only place that knows both models
+// 6. Token is a Symbol — no string collision risk
+//
+// For microservices: replace the adapter body with a message broker publish.
+// The port and handler stay the same — only the adapter changes.

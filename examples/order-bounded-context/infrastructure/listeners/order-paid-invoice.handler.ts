@@ -1,39 +1,53 @@
-import { Injectable } from '@nestjs/common';
-import { CommandBus, EventsHandler, IEventHandler } from '@nestjs/cqrs';
+import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
+import { Inject, Logger } from '@nestjs/common';
+
 import { OrderPaidEvent } from '../../domain/events/order-paid.event';
 
+// Integration Event Port — defined by Orders BC, implemented by consuming BCs
+export const ORDER_INTEGRATION_EVENTS_TOKEN = Symbol('OrderIntegrationEvents');
+
+export interface OrderIntegrationEventsPort {
+  orderPaid(payload: {
+    orderId: string;
+    organizationId: string;
+    customerId: string;
+    total: number;
+    currency: string;
+  }): Promise<void>;
+}
+
 /**
- * Cross-BC listener: when an order is paid, dispatch a command to the Invoicing
- * bounded context to generate an invoice.
+ * Publishes an integration event when an order is paid.
  *
- * This is the standard pattern for cross-BC side effects:
- *   OrderPaidEvent (Orders BC) -> CreateInvoiceCommand (Invoicing BC)
+ * The consuming BC (e.g., Invoicing) implements OrderIntegrationEventsPort
+ * as an adapter (ACL), translating the Orders BC model into its own domain.
  *
- * The CommandBus routes the command to whichever handler is registered,
- * keeping the Orders BC completely decoupled from Invoicing internals.
+ * Orders BC NEVER imports anything from Invoicing BC.
+ * Invoicing BC implements the port that Orders BC defines.
  */
-@Injectable()
 @EventsHandler(OrderPaidEvent)
-export class OrderPaidInvoiceHandler implements IEventHandler<OrderPaidEvent> {
-  constructor(private readonly commandBus: CommandBus) {}
+export class OrderPaidIntegrationHandler implements IEventHandler<OrderPaidEvent> {
+  private readonly logger = new Logger(OrderPaidIntegrationHandler.name);
+
+  constructor(
+    @Inject(ORDER_INTEGRATION_EVENTS_TOKEN)
+    private readonly integrationEvents: OrderIntegrationEventsPort,
+  ) {}
 
   async handle(event: OrderPaidEvent): Promise<void> {
-    // In a real project, import CreateInvoiceCommand from the invoicing module
-    // and dispatch it here:
-    //
-    // await this.commandBus.execute(
-    //   new CreateInvoiceCommand(
-    //     event.aggregateId,
-    //     event.organizationId,
-    //     event.customerId,
-    //     event.total,
-    //     event.currency,
-    //   ),
-    // );
-
-    // Placeholder for the example
-    console.log(
-      `[OrderPaidInvoiceHandler] Dispatching invoice creation for order ${event.aggregateId}, total ${event.total} ${event.currency}`,
-    );
+    try {
+      await this.integrationEvents.orderPaid({
+        orderId: event.aggregateId,
+        organizationId: event.organizationId,
+        customerId: event.customerId,
+        total: event.total,
+        currency: event.currency,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to publish order.paid integration event for ${event.aggregateId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 }

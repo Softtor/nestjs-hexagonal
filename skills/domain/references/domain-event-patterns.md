@@ -230,3 +230,82 @@ Key methods on `AggregateRoot`:
 - `entity.getUncommittedEvents()` — read queued events without clearing
 - `entity.commit()` — publish events to EventBus and clear the queue
 - Use `entity.commit()` in tests when you want to reset the event queue between operations
+
+---
+
+## Domain Events vs Integration Events
+
+Domain events and integration events serve different purposes and have different visibility rules.
+
+### Domain Events — INTERNAL to the BC
+
+Domain events are produced by aggregates via `entity.apply()` and published to the in-process `EventBus` via `entity.commit()`. They are **private** to the bounded context that emits them.
+
+```
+OrderBC:
+  OrderEntity.pay()          → applies OrderPaidEvent
+  command handler             → entity.commit() publishes to EventBus
+  OrderPaidProjectionHandler ← same-BC listener (Redis read model)
+  OrderPaidAuditHandler      ← same-BC listener (audit log)
+```
+
+**Rules:**
+- Domain events never leave the bounded context directly
+- Other BCs must NOT subscribe to domain events from a foreign BC via `@EventsHandler`
+- Domain events may contain rich domain types (VOs, enums) — they are internal
+
+### Integration Events — PUBLIC contract between BCs
+
+When a domain event needs to trigger a reaction in another BC, a dedicated handler publishes an **integration event** via a port. The port is defined by the emitting BC and implemented by the consuming BC (ACL).
+
+```
+OrderBC:
+  OrderPaidEvent (domain) → OrderPaidIntegrationHandler
+                              → integrationEventsPort.orderPaid(primitives)
+                                                    ↓ (port/adapter boundary)
+InvoicingBC:
+  OrderIntegrationEventsAdapter (ACL)
+    → CreateInvoiceCommand (own BC)
+```
+
+**Rules:**
+- Integration event payloads use **primitive types only** — no domain objects
+- The emitting BC defines the port; the consuming BC implements the adapter
+- The emitting BC NEVER imports from the consuming BC
+- The ACL adapter in the consuming BC is the only place that knows both models
+
+### A domain event handler can publish an integration event
+
+```typescript
+// This handler lives in the EMITTING BC (Orders)
+// It converts a domain event into a call to the integration port
+@EventsHandler(OrderPaidEvent)
+export class OrderPaidIntegrationHandler implements IEventHandler<OrderPaidEvent> {
+  constructor(
+    @Inject(ORDER_INTEGRATION_EVENTS_TOKEN)
+    private readonly integrationEvents: OrderIntegrationEventsPort,
+  ) {}
+
+  async handle(event: OrderPaidEvent): Promise<void> {
+    // Publish integration event — payload is primitives only
+    await this.integrationEvents.orderPaid({
+      orderId: event.aggregateId,
+      organizationId: event.organizationId,
+      customerId: event.customerId,
+      total: event.total,
+      currency: event.currency,
+    });
+  }
+}
+```
+
+### Deployment context determines the transport
+
+| Context | Integration mechanism |
+|---|---|
+| Modular monolith | Integration Event Port + ACL adapter (in-process, type-safe) |
+| Microservices | Message broker (RabbitMQ/Kafka) — port wraps the publisher |
+
+In both cases, the emitting BC defines a port. Only the adapter implementation changes — the handler and port stay the same.
+
+See `skills/event-listeners/references/cross-bc-listeners.md` for full templates.
