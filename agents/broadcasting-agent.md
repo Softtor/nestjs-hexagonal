@@ -1,7 +1,7 @@
 ---
 name: broadcasting-agent
 description: Creates WebSocket broadcasting infrastructure (NestJS backend) and real-time consumption on the frontend (Next.js or React). Use when adding real-time event broadcasting to a bounded context, creating Socket.IO gateways, or implementing frontend event listeners. Dispatched after infrastructure layer is complete.
-model: sonnet
+model: claude-sonnet-5
 color: cyan
 tools:
   - Read

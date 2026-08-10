@@ -35,18 +35,18 @@ Compatible with GSD workflow.
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
-| `domain-agent` | **Opus** | Domain modeling (entities, VOs, events) |
-| `application-agent` | Sonnet | Use cases, handlers, DTOs, ports |
-| `infrastructure-agent` | Sonnet | Repos, module wiring, adapters |
-| `presentation-agent` | Sonnet | Controllers, request DTOs, Swagger |
-| `broadcasting-agent` | Sonnet | WS gateway backend + frontend consumption (Next.js/React) |
-| `architecture-reviewer` | **Opus** | Over-engineering + code smell detection |
-| `event-debug-agent` | **Opus** | Debug event chain: entity -> dispatch -> WS -> frontend |
-| `listener-agent` | Sonnet | Create event listeners (same-BC, cross-BC, bridge) |
+| `domain-agent` | **Claude Opus 5** | Domain modeling (entities, VOs, events) |
+| `application-agent` | Claude Sonnet 5 | Use cases, handlers, DTOs, ports |
+| `infrastructure-agent` | Claude Sonnet 5 | Repos, module wiring, adapters |
+| `presentation-agent` | Claude Sonnet 5 | Controllers, request DTOs, Swagger |
+| `broadcasting-agent` | Claude Sonnet 5 | WS gateway backend + frontend consumption (Next.js/React) |
+| `architecture-reviewer` | **Claude Opus 5** | Over-engineering + code smell detection |
+| `event-debug-agent` | **Claude Opus 5** | Debug event chain: entity -> dispatch -> WS -> frontend |
+| `listener-agent` | Claude Sonnet 5 | Create event listeners (same-BC, cross-BC, bridge) |
 
 ## Workflow Order
 
-Domain (Opus) -> Application (Sonnet) -> Infrastructure (Sonnet) -> Presentation (Sonnet)
+Domain (Opus 5) -> Application (Sonnet 5) -> Infrastructure (Sonnet 5) -> Presentation (Sonnet 5)
 
 Each layer follows TDD: write test first, then implement.
 

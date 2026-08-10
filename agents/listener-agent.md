@@ -1,7 +1,7 @@
 ---
 name: listener-agent
 description: Creates event listeners that react to domain events — same-BC side effects (projections, audit), cross-BC reactions (another bounded context consuming events), or bridge listeners (WebSocket broadcast, RabbitMQ publish, email). Identifies the correct listener type and creates handler + test + module registration. Use when asked to "create listener", "react to event", "add event handler", "broadcast event", or "consume event from another module".
-model: sonnet
+model: claude-sonnet-5
 color: orange
 tools:
   - Read

@@ -1,6 +1,6 @@
 ---
 name: create-subdomain
-description: Orchestrates creation of a NestJS bounded context by dispatching specialized agents per layer (domain, application, infrastructure, presentation). Uses Opus for domain modeling, Sonnet for execution layers. Compatible with GSD workflow (usable as phase execution). Follows TDD, Hexagonal Architecture, DDD, and CQRS.
+description: Orchestrates creation of a NestJS bounded context by dispatching specialized agents per layer (domain, application, infrastructure, presentation). Uses Claude Opus 5 for domain modeling and review, Claude Sonnet 5 for execution layers. Compatible with GSD workflow (usable as phase execution). Follows TDD, Hexagonal Architecture, DDD, and CQRS.
 argument-hint: Entity name (e.g., "Invoice" or "billing/invoices")
 allowed-tools:
   - Read
@@ -68,14 +68,14 @@ After answers, create the directory structure:
 
 ---
 
-## Phase 2 — Domain Layer via `domain-agent` (Opus 4.6)
+## Phase 2 — Domain Layer via `domain-agent` (Claude Opus 5)
 
 Dispatch the domain-agent with context from Phase 1:
 
 ```
 Agent tool:
   subagent_type: "nestjs-hexagonal:domain-agent"
-  model: opus
+  model: claude-opus-5
   prompt: |
     Create domain layer for "<context>" at "<path>".
     Entity: <name>, Props: <list>
@@ -90,12 +90,12 @@ The agent will create: entity + tests, VOs + tests, events, repository interface
 
 ---
 
-## Phase 3 — Application Layer via `application-agent` (Sonnet 4.6)
+## Phase 3 — Application Layer via `application-agent` (Claude Sonnet 5)
 
 ```
 Agent tool:
   subagent_type: "nestjs-hexagonal:application-agent"
-  model: sonnet
+  model: claude-sonnet-5
   prompt: |
     Create application layer for "<context>" at "<path>".
     Pattern: <A/B/C>, Operations: <list>
@@ -110,12 +110,12 @@ Creates: DTOs, use cases/handlers, ports, tests.
 
 ---
 
-## Phase 4 — Infrastructure Layer via `infrastructure-agent` (Sonnet 4.6)
+## Phase 4 — Infrastructure Layer via `infrastructure-agent` (Claude Sonnet 5)
 
 ```
 Agent tool:
   subagent_type: "nestjs-hexagonal:infrastructure-agent"
-  model: sonnet
+  model: claude-sonnet-5
   prompt: |
     Create infrastructure layer for "<context>" at "<path>".
     Pattern: <A/B/C>, Ports to implement: <list>
@@ -129,14 +129,14 @@ Creates: Prisma repo, model mapper, in-memory repo, adapters, event handlers, mo
 
 ---
 
-## Phase 5 — Presentation Layer via `presentation-agent` (Sonnet 4.6)
+## Phase 5 — Presentation Layer via `presentation-agent` (Claude Sonnet 5)
 
 Skip if no HTTP endpoints needed.
 
 ```
 Agent tool:
   subagent_type: "nestjs-hexagonal:presentation-agent"
-  model: sonnet
+  model: claude-sonnet-5
   prompt: |
     Create presentation layer for "<context>" at "<path>".
     Pattern: <A/B/C>, Endpoints: <CRUD list>
@@ -165,12 +165,12 @@ All must exit 0. Fix root causes, no suppression.
 
 ---
 
-## Phase 7 — Architecture Review via `architecture-reviewer` (Sonnet 4.6)
+## Phase 7 — Architecture Review via `architecture-reviewer` (Claude Opus 5)
 
 ```
 Agent tool:
   subagent_type: "nestjs-hexagonal:architecture-reviewer"
-  model: sonnet
+  model: claude-opus-5
   prompt: |
     Review bounded context at "<path>".
     Check all 6 dimensions. Produce Pass/Warning/Fail report.
@@ -187,12 +187,12 @@ This workflow maps directly to GSD phases:
 | GSD Phase | create-subdomain Phase | Agent |
 |---|---|---|
 | Research | Phase 1 (requirements) | inline |
-| Execute task 1 | Phase 2 (domain) | domain-agent (Opus) |
-| Execute task 2 | Phase 3 (application) | application-agent (Sonnet) |
-| Execute task 3 | Phase 4 (infrastructure) | infrastructure-agent (Sonnet) |
-| Execute task 4 | Phase 5 (presentation) | presentation-agent (Sonnet) |
+| Execute task 1 | Phase 2 (domain) | domain-agent (Opus 5) |
+| Execute task 2 | Phase 3 (application) | application-agent (Sonnet 5) |
+| Execute task 3 | Phase 4 (infrastructure) | infrastructure-agent (Sonnet 5) |
+| Execute task 4 | Phase 5 (presentation) | presentation-agent (Sonnet 5) |
 | Verify | Phase 6 (verification) | inline |
-| Review | Phase 7 (review) | architecture-reviewer (Sonnet) |
+| Review | Phase 7 (review) | architecture-reviewer (Opus 5) |
 
 When used within GSD, each phase can be a separate GSD task tracked in the plan.
 

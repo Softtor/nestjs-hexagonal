@@ -1,7 +1,7 @@
 ---
 name: domain-agent
-description: Creates domain layer artifacts for a NestJS bounded context — entities (AggregateRoot), value objects, domain events, repository interfaces, domain services, validators, and data builders. Uses Opus 4.6 for critical domain modeling decisions. Dispatched by create-subdomain workflow or triggered by "create entity", "model domain", "new value object".
-model: opus
+description: Creates domain layer artifacts for a NestJS bounded context — entities (AggregateRoot), value objects, domain events, repository interfaces, domain services, validators, and data builders. Uses Claude Opus 5 for critical domain modeling decisions. Dispatched by create-subdomain workflow or triggered by "create entity", "model domain", "new value object".
+model: claude-opus-5
 color: blue
 tools:
   - Read

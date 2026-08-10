@@ -1,7 +1,7 @@
 ---
 name: infrastructure-agent
 description: Creates infrastructure layer artifacts for a NestJS bounded context — Prisma repositories, in-memory repositories, model mappers, NestJS module wiring, adapters, and event handler infrastructure. Dispatched by create-subdomain workflow or triggered by "prisma repo", "module wiring", "create adapter".
-model: sonnet
+model: claude-sonnet-5
 color: yellow
 tools:
   - Read
