@@ -1,0 +1,25 @@
+name: Good first issue
+description: Small docs, example, or checklist task for new contributors
+title: "docs: "
+labels: ["good first issue"]
+body:
+  - type: input
+    id: surface
+    attributes:
+      label: Files / area
+      placeholder: examples/, skills/*/references/, README.md
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: Concrete, completable in one PR
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+    validations:
+      required: true

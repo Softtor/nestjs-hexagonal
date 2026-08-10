@@ -1,7 +1,7 @@
 ---
 name: event-debug-agent
 description: Debugs the full event chain from domain event dispatch through WebSocket delivery to frontend component consumption. Use when events are not reaching the frontend, WebSocket is not updating, handlers are not firing, or real-time updates are broken. Follows the Debug Rule — always trace from origin to UI.
-model: opus
+model: claude-opus-5
 color: yellow
 tools:
   - Read

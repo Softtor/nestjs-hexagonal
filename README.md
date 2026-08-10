@@ -61,16 +61,18 @@ Each agent loads its corresponding skill and specializes in one concern.
 
 | Agent | Model | Purpose |
 |---|---|---|
-| `domain-agent` | **Opus 4.6** | Domain modeling — entities, VOs, events, repo interfaces |
-| `application-agent` | Sonnet 4.6 | Use cases, CQRS handlers, DTOs, ports |
-| `infrastructure-agent` | Sonnet 4.6 | Prisma repos, module wiring, adapters |
-| `presentation-agent` | Sonnet 4.6 | Controllers, request DTOs, Swagger |
-| `broadcasting-agent` | Sonnet 4.6 | WS gateway (backend) + event consumption (Next.js/React frontend) |
-| `listener-agent` | Sonnet 4.6 | Creates event listeners (same-BC projections, cross-BC reactions, bridge) |
-| `architecture-reviewer` | **Opus 4.6** | Over-engineering detection + code smell identification |
-| `event-debug-agent` | **Opus 4.6** | Debug full event chain: entity -> dispatch -> WS -> frontend |
+| `domain-agent` | **Claude Opus 5** (`claude-opus-5`) | Domain modeling — entities, VOs, events, repo interfaces |
+| `application-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Use cases, CQRS handlers, DTOs, ports |
+| `infrastructure-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Prisma repos, module wiring, adapters |
+| `presentation-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Controllers, request DTOs, Swagger |
+| `broadcasting-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | WS gateway (backend) + event consumption (Next.js/React frontend) |
+| `listener-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Creates event listeners (same-BC projections, cross-BC reactions, bridge) |
+| `architecture-reviewer` | **Claude Opus 5** (`claude-opus-5`) | Over-engineering detection + code smell identification |
+| `event-debug-agent` | **Claude Opus 5** (`claude-opus-5`) | Debug full event chain: entity -> dispatch -> WS -> frontend |
 
-**Why Opus for domain, review, and debug?** Domain modeling requires critical decisions. Review requires deep judgment to distinguish necessary from unnecessary complexity. Event debugging requires tracing across 6 layers systematically.
+**Why Opus 5 for domain, review, and debug?** Domain modeling requires critical decisions. Review requires deep judgment to distinguish necessary from unnecessary complexity. Event debugging requires tracing across 6 layers systematically.
+
+**Model pins:** Agents use full IDs (`claude-opus-5`, `claude-sonnet-5`) so resolution does not fall back to legacy 4.x aliases on some providers. Requires Claude Code **v2.1.219+** (Opus 5) and **v2.1.197+** (Sonnet 5) — run `claude update` if needed.
 
 ## Architecture Overview
 
@@ -157,6 +159,8 @@ The installer adds:
 - Phase template for bounded context creation
 
 ## Contributing
+
+Community contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the [ROADMAP](ROADMAP.md) for open feature tracks and good first issues.
 
 1. Fork the repository
 2. Create a feature branch

@@ -1,0 +1,50 @@
+name: Skill proposal
+description: Propose a new skill or a major extension to an existing one
+title: "skill: "
+labels: ["skill"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [ROADMAP.md](https://github.com/Softtor/nestjs-hexagonal/blob/main/ROADMAP.md) before opening a duplicate.
+  - type: input
+    id: skill-name
+    attributes:
+      label: Proposed skill name
+      placeholder: nestjs-hexagonal:outbox
+    validations:
+      required: true
+  - type: textarea
+    id: trigger
+    attributes:
+      label: Trigger phrases
+      placeholder: "create outbox, reliable publish, after save dispatch"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What gap exists in the current skills?
+    validations:
+      required: true
+  - type: textarea
+    id: fit
+    attributes:
+      label: Architecture fit
+      description: How does this respect AggregateRoot, pure repos, EventPublisher-in-Handler, and YAGNI?
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Primary layer
+      options:
+        - domain
+        - application
+        - infrastructure
+        - presentation
+        - workflow / orchestrator
+        - cross-cutting
+    validations:
+      required: true

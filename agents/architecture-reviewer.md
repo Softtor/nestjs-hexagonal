@@ -1,7 +1,7 @@
 ---
 name: architecture-reviewer
 description: Reviews a bounded context for Hexagonal Architecture + DDD + CQRS compliance. Specializes in detecting over-engineering and code smells. Produces structured reports with architecture compliance, over-engineering audit, and code smell detection. Use after implementing a bounded context, when asked to "review architecture", "check for over-engineering", or "review bounded context".
-model: opus
+model: claude-opus-5
 color: red
 tools:
   - Glob

@@ -9,10 +9,10 @@
   "plugins": [
     {
       "name": "nestjs-hexagonal",
-      "description": "Claude Code plugin for building NestJS bounded contexts with Hexagonal Architecture, DDD, CQRS, and event-driven patterns. 10 skills, 8 agents (Opus + Sonnet), TDD workflow, GSD compatible.",
+      "description": "Claude Code plugin for building NestJS bounded contexts with Hexagonal Architecture, DDD, CQRS, and event-driven patterns. 10 skills, 8 agents (Opus 5 + Sonnet 5), TDD workflow, GSD compatible.",
       "source": "./",
       "category": "development",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "homepage": "https://github.com/Softtor/nestjs-hexagonal"
     }
   ]

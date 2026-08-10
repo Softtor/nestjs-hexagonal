@@ -1,0 +1,46 @@
+name: Feature or adapter
+description: Persistence, transport, messaging, or DX feature for contributors
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Prefer ports in application + adapters in infrastructure. See ROADMAP tracks.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - persistence
+        - presentation / transport
+        - messaging / workflows
+        - DX / multi-harness
+        - example BC
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - Port interface location
+        - Adapter + in-memory/test double
+        - Skill or reference doc
+        - Example snippet
+    validations:
+      required: true
+  - type: checkboxes
+    id: good-first
+    attributes:
+      label: Suitability
+      options:
+        - label: Suitable as a good first issue
+        - label: Needs a design discussion first

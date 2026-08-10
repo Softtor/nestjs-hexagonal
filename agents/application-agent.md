@@ -1,7 +1,7 @@
 ---
 name: application-agent
 description: Creates application layer artifacts for a NestJS bounded context — use cases, CQRS command/query handlers, DTOs, ports, and application services. Dispatched by create-subdomain workflow or triggered by "create use case", "add handler", "cqrs command".
-model: sonnet
+model: claude-sonnet-5
 color: green
 tools:
   - Read

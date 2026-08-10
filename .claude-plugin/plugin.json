@@ -1,7 +1,7 @@
 {
   "name": "nestjs-hexagonal",
   "description": "Skills for building NestJS bounded contexts with Hexagonal Architecture, DDD, and CQRS patterns. Covers domain modeling, application layer, infrastructure wiring, presentation, full TDD workflow, and architecture review.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Softtor",
     "url": "https://github.com/softtor"

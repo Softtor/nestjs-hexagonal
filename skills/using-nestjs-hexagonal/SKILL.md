@@ -30,7 +30,7 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | Task | Route to | Type |
 |------|----------|------|
 | Create new bounded context / module | `nestjs-hexagonal:create-subdomain` | Skill (orchestrator) |
-| Create entity (AggregateRoot) | `nestjs-hexagonal:domain-agent` | Agent (Opus) |
+| Create entity (AggregateRoot) | `nestjs-hexagonal:domain-agent` | Agent (Opus 5) |
 | Create value object | `nestjs-hexagonal:domain` | Skill |
 | Create domain event | `nestjs-hexagonal:domain` | Skill |
 | Create repository interface | `nestjs-hexagonal:domain` | Skill |
@@ -48,16 +48,16 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | Create event listener (cross-BC) | `nestjs-hexagonal:event-listeners` | Skill |
 | Create WebSocket broadcast | `nestjs-hexagonal:websocket-broadcasting` | Skill |
 | Create WS gateway | `nestjs-hexagonal:websocket-broadcasting` | Skill |
-| Create frontend event consumer | `nestjs-hexagonal:broadcasting-agent` | Agent (Sonnet) |
+| Create frontend event consumer | `nestjs-hexagonal:broadcasting-agent` | Agent (Sonnet 5) |
 
 ### Reviewing or Debugging
 
 | Task | Route to | Type |
 |------|----------|------|
-| Review bounded context | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus) |
-| Check for over-engineering | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus) |
-| Debug event not reaching frontend | `nestjs-hexagonal:event-debug-agent` | Agent (Opus) |
-| Debug event not being consumed | `nestjs-hexagonal:event-debug-agent` | Agent (Opus) |
+| Review bounded context | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5) |
+| Check for over-engineering | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5) |
+| Debug event not reaching frontend | `nestjs-hexagonal:event-debug-agent` | Agent (Opus 5) |
+| Debug event not being consumed | `nestjs-hexagonal:event-debug-agent` | Agent (Opus 5) |
 
 ### Setting Up
 
@@ -72,16 +72,16 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 
 | Decision Type | Agent | Model | Why |
 |---|---|---|---|
-| Domain modeling (what entities, VOs, events) | `domain-agent` | **Opus** | Critical architectural decisions |
-| Architecture review | `architecture-reviewer` | **Opus** | Deep judgment for smells + over-engineering |
-| Event chain debugging | `event-debug-agent` | **Opus** | 6-layer systematic tracing |
-| Application layer (use cases, handlers) | `application-agent` | Sonnet | Follows established patterns |
-| Infrastructure (repos, modules) | `infrastructure-agent` | Sonnet | Mechanical pattern application |
-| Presentation (controllers, DTOs) | `presentation-agent` | Sonnet | Mechanical pattern application |
-| WebSocket + frontend | `broadcasting-agent` | Sonnet | Follows WS skill patterns |
-| Event listeners | `listener-agent` | Sonnet | Follows listener skill patterns |
+| Domain modeling (what entities, VOs, events) | `domain-agent` | **Opus 5** | Critical architectural decisions |
+| Architecture review | `architecture-reviewer` | **Opus 5** | Deep judgment for smells + over-engineering |
+| Event chain debugging | `event-debug-agent` | **Opus 5** | 6-layer systematic tracing |
+| Application layer (use cases, handlers) | `application-agent` | Sonnet 5 | Follows established patterns |
+| Infrastructure (repos, modules) | `infrastructure-agent` | Sonnet 5 | Mechanical pattern application |
+| Presentation (controllers, DTOs) | `presentation-agent` | Sonnet 5 | Mechanical pattern application |
+| WebSocket + frontend | `broadcasting-agent` | Sonnet 5 | Follows WS skill patterns |
+| Event listeners | `listener-agent` | Sonnet 5 | Follows listener skill patterns |
 
-**Rule:** Use Opus for DECISIONS (what to build), Sonnet for EXECUTION (how to build it).
+**Rule:** Use Opus 5 for DECISIONS (what to build), Sonnet 5 for EXECUTION (how to build it).
 
 ---
 
@@ -104,13 +104,13 @@ These rules apply to ALL tasks routed through this plugin:
 ## Workflow Order (when building a full BC)
 
 ```
-1. Domain (Opus)     → entities, VOs, events, repo interface, data builders
+1. Domain (Opus 5)   → entities, VOs, events, repo interface, data builders
 2. Application       → use cases / handlers, DTOs, ports
 3. Infrastructure    → Prisma repo, module wiring, adapters, listeners
 4. Presentation      → controllers, request DTOs, Swagger
 5. Broadcasting      → WS gateway + frontend hooks (if real-time needed)
 6. Verification      → lint, types, tests, build
-7. Review (Opus)     → architecture compliance + over-engineering audit
+7. Review (Opus 5)   → architecture compliance + over-engineering audit
 ```
 
 Use `nestjs-hexagonal:create-subdomain` to orchestrate this automatically.
