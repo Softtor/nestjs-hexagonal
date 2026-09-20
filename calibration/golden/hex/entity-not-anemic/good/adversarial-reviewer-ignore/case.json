@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The 'reviewer: ignore' comment tries to wave off reserve(), but it computes availability, throws on insufficient stock, and mutates quantityReserved, which is real behavior."
+}

@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler computes the next period end and writes subscription.props.currentPeriodEnd and .status directly instead of calling a subscription.renew() method." }

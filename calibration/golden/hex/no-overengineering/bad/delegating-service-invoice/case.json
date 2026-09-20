@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "every method just forwards its arguments to a single command or query via commandBus/queryBus with no validation, composition or added logic; matches delegating-service."
+}

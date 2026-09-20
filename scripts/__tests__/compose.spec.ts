@@ -133,7 +133,7 @@ describe('composeRulebook', () => {
         check: undefined,
         question: { type: 'noul', instructions: 'q' },
         state: { slice: 'file' },
-        thresholds: { deny: 0.9, ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } },
+        thresholds: { ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } },
       }),
       rule('hex/a'),
       rule('hex/b'),
@@ -144,7 +144,7 @@ describe('composeRulebook', () => {
       overrides: [
         { id: 'hex/a', disabled: true },
         { id: 'hex/b', severity: 'WARN', scope: { include: ['src/**'], exclude: ['legacy/**'] } },
-        { id: 'hex/s', thresholds: { uncertain: { hi: 0.7 }, deny: 0.95 } },
+        { id: 'hex/s', thresholds: { uncertain: { hi: 0.7 }, ask: 0.8 } },
       ],
     });
     const composed = composeRulebook(project, resolver({ sem: { rulebook: semanticBase, text: semText } }));
@@ -154,7 +154,7 @@ describe('composeRulebook', () => {
     expect(b?.severity).toBe('WARN');
     expect(b?.scope).toEqual({ include: ['src/**'], exclude: ['**/__tests__/**', 'legacy/**'] });
     const s = composed.rules.find((r) => r.id === 'hex/s');
-    expect(s?.thresholds).toEqual({ deny: 0.95, ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.7 } });
+    expect(s?.thresholds).toEqual({ ask: 0.8, advise: 0.55, uncertain: { lo: 0.35, hi: 0.7 } });
   });
 
   it('rejects an override for an unknown rule id or a mismatched threshold shape', () => {

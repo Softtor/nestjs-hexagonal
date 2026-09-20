@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Pagination defaults live on the request DTO fields (page = 1, perPage = 20); the controller forwards them unchanged, computing nothing itself." }

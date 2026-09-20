@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "update() unconditionally assigns every field from input with no check, transition guard or event, which is setter behavior spread across one method."
+}

@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Despite the reviewer-ignore comment, the handler body is plain orchestration: load, guard, call invoice.void(), save and commit; nothing computes or branches a business outcome." }

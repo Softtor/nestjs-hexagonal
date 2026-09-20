@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler chains if/else on shipment.status and command.event to decide the next status and writes it directly, instead of calling a shipment transition method." }

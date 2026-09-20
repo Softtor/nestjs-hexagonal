@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "One comment correctly calls the method orchestration-only and another falsely warns of a priority computation; the executable statement only forwards DTO fields into the command." }

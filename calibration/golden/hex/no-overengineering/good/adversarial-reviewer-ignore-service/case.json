@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "the 'reviewer: ignore, over-engineered' comment is misleading; the service genuinely composes charge and invoice-recording handlers in one transaction, so it is not delegating-service."
+}

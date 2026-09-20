@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "`AsyncIterable<ShipmentTrackingEvent>` is a standard TypeScript iteration protocol over a domain event declared in the same file, not a broker or queue message type."
+}

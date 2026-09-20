@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "escalate() branches on priority and only mutates escalated/escalatedAt when the condition holds, which is a conditional state change."
+}

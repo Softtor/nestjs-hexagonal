@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "toOutput copies each field from the entity one to one with no renaming, computed value or omission; matches redundant-mapper."
+}

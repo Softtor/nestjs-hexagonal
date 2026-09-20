@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "renew() has no visible throw or if, but it mutates props and applies a domain event, which the rule counts as behavior on its own."
+}

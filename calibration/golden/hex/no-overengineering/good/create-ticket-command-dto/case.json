@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "a plain CQRS command data class with no execute method; it is not a use case, mapper, service or read model, so none of the four shapes apply."
+}

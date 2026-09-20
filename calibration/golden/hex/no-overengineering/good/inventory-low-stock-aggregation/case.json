@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "aggregates low-stock items across warehouses into per-warehouse counts and totals, which no single indexed query answers directly; not a trivial-read-model."
+}

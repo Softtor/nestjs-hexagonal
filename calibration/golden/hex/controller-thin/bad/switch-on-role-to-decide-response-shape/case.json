@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "switch (wallet.ownerRole) branches on a role read from the record to pick a different response shape, including computing payoutEligible from the balance." }

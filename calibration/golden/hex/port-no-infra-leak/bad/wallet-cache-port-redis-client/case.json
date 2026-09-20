@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "`getClient(): Redis` returns the raw `ioredis` client type, handing the cache implementation detail straight to consumers."
+}

@@ -98,7 +98,6 @@ function collectRules(
 function mergeThresholds(rule: Rule, patch: ThresholdsOverride): Thresholds {
   const current = rule.thresholds;
   const base: Record<string, unknown> = current ? { ...current } : {};
-  if (patch.deny !== undefined) base.deny = patch.deny;
   if (patch.ask !== undefined) base.ask = patch.ask;
   if (patch.advise !== undefined) base.advise = patch.advise;
   if (patch.minConfidence !== undefined) base.minConfidence = patch.minConfidence;

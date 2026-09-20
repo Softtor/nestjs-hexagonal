@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The status checks go beyond the allowed null-result not-found pattern: ticket.status === 'ESCALATED' branches on domain data loaded from the record to choose between two different commands." }

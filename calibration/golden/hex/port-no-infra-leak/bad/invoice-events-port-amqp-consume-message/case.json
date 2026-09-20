@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "`process`/`requeue` take `ConsumeMessage` from `amqplib`, the raw RabbitMQ message envelope, instead of a decoded domain event."
+}

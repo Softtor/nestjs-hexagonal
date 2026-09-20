@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Eligibility is asserted through the injected redemptionGuard port; the handler itself only calls coupon.redeem() after the guard passes." }

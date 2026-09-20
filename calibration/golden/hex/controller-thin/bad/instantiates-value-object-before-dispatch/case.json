@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "MoneyVO.create(dto.discountAmount, dto.currency) instantiates a domain value object in the controller instead of letting the command carry primitives for the handler to build it." }

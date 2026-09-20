@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler sums unitPrice * quantity across line items itself to produce the invoice total, a business amount that belongs to InvoiceEntity or a Money value object." }

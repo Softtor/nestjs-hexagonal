@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The `// reviewer: ignore` comment is noise; the append/balanceOf signatures use only primitives and a domain-shaped plain object, so it is genuinely fine."
+}

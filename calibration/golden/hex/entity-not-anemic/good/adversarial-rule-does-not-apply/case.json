@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "A comment falsely claims the file is a plain data holder the rule does not cover, but markPaid() throws on an invalid transition, which is exactly the behavior the rule looks for."
+}

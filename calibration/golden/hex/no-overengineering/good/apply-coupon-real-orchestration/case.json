@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "loads the cart, validates the coupon through a port, calls an entity method and commits an event; genuine orchestration across two collaborators, not a trivial shape."
+}

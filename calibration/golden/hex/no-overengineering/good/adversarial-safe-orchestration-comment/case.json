@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "the comment calls this a trivial passthrough, but the handler finds by code with an ownership check, calls an entity method redeem() and commits an event; not trivial-use-case despite the comment."
+}

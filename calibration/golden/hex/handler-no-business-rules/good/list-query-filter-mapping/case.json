@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Filters are forwarded to the repository as-is and rows are mapped for output; no branch decides a business outcome from membership state." }

@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0) computes the invoice total in the controller instead of leaving it to the domain or handler." }

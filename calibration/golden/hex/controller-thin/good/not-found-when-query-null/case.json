@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Checking for a null query result and throwing an HTTP exception is the explicitly allowed not-found pattern, with no other branching on the record's fields." }

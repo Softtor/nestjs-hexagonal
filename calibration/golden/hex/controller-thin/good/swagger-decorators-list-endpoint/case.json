@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Swagger metadata documents the endpoint but the method body only forwards query params into a query dispatch." }

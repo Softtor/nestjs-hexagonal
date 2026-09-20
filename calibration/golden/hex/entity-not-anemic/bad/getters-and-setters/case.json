@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "Every member is a constructor, static restore, a getter or a setter; setters just assign, so no invariant is enforced anywhere."
+}

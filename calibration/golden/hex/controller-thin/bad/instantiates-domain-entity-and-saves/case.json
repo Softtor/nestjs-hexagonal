@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "ShipmentEntity.create(...) instantiates a domain entity and this.shipmentRepository.save(shipment) persists it directly from the controller, bypassing the command layer." }

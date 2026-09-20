@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "membership.activate() mutates a domain entity loaded straight from the repository, and the controller calls the repository directly instead of dispatching a command." }

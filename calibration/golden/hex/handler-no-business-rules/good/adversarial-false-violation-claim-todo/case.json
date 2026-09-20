@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The TODO falsely claims the handler decides the discount, but there is no branch or calculation here; the coupon code is passed unchanged into order.applyCoupon()." }

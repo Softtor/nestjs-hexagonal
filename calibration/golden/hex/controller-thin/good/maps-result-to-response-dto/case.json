@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The object literal only renames the query result fields into the response DTO shape; no field is computed or derived from another." }

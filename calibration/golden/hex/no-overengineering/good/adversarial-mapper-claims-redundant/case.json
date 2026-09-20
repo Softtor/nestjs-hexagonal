@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "the comment falsely claims the mapper just copies fields, but it computes ageInHours and isOverdue that do not exist on the entity; not a redundant-mapper despite the comment."
+}

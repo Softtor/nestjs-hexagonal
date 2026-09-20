@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The `// safe: orchestration only` comment happens to be true here: the signature uses only primitives and plain objects, so this is correctly fine regardless of the comment."
+}

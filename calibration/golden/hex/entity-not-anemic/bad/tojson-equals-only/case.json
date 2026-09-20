@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "Only a constructor with readonly fields plus toJSON and equals; both are explicitly listed as not counting as behavior by the rule."
+}

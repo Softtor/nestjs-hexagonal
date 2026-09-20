@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "Returning a plain `{ transactionId: string; processedAt: Date }` shape describes a domain outcome, not a vendor payment SDK type, so it is not a leak."
+}

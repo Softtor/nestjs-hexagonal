@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The method only validates params, builds a command from the request DTO and dispatches it through the command bus; guards and Swagger decorators do not add logic." }

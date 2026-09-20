@@ -8,8 +8,8 @@ id: acme-crm
 version: 0.1.0
 extends:
   - id: hexagonal
-    version: 1.2.0
-    sha256: c4fe2a9c4187bb7c2b2b3524663691d1f68264f6e9fd84c96ecac69e7033c6a2
+    version: 1.3.0
+    sha256: 90cac4dd42ef2870b40133e092f4bdd403315019863c6c34c6f7feca532e3182
   - id: softtor-conventions
     version: 1.2.0
     sha256: 85df420053645555e421fe34e5363e97cec17f70f793f93ffc9bcff8e419271c

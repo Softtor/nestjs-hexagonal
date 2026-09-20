@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The tracking code comes from the injected carrier port with no branching or computation; the comment is accurate but does not affect the verdict either way." }

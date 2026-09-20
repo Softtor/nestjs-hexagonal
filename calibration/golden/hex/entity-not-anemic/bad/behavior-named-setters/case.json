@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "activate() and suspend() read like domain behavior by name, but both unconditionally set two fields with no guard, throw or event, so they are setters in disguise."
+}

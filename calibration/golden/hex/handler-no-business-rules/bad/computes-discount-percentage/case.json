@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler multiplies order.subtotal by the discount percentage to derive discountAmount itself, a business calculation that should live on the order aggregate." }

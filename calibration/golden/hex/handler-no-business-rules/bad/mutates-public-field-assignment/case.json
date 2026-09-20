@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler assigns wallet.balance directly with the sum instead of calling a wallet.credit(amount) method, bypassing the aggregate's invariant." }

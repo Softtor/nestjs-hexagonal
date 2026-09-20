@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "`executeRawSql(sql: string)` exposes raw SQL as part of the port's contract even though `findByCode` alone would be fine."
+}

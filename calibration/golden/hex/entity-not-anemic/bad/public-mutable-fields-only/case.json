@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "The class has only a constructor and public mutable fields; nothing enforces an invariant, throws or applies an event."
+}

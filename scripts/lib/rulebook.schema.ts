@@ -135,10 +135,12 @@ export const StateSchema = z.object({
 });
 
 const Probability = z.number().min(0).max(1);
+const DENY_NOT_ALLOWED = 'deny is not allowed in a rulebook; it only exists in calibration/fitted/<pin>.json';
+const NoDeny = z.undefined({ error: DENY_NOT_ALLOWED }).optional();
 
 export const NoulThresholdsSchema = z
   .object({
-    deny: Probability.optional(),
+    deny: NoDeny,
     ask: Probability.optional(),
     advise: Probability,
     uncertain: z.object({ lo: Probability, hi: Probability }),
@@ -147,22 +149,26 @@ export const NoulThresholdsSchema = z
 
 export const DistributionThresholdsSchema = z
   .object({
-    deny: Probability.optional(),
+    deny: NoDeny,
     ask: Probability.optional(),
     advise: Probability,
     minConfidence: Probability,
   })
   .strict();
 
-export const ThresholdsSchema = z.union([NoulThresholdsSchema, DistributionThresholdsSchema]);
+const RejectDeny = z.object({ deny: NoDeny }).loose();
 
-export const ThresholdsOverrideSchema = z.object({
-  deny: Probability.optional(),
-  ask: Probability.optional(),
-  advise: Probability.optional(),
-  minConfidence: Probability.optional(),
-  uncertain: z.object({ lo: Probability.optional(), hi: Probability.optional() }).optional(),
-});
+export const ThresholdsSchema = RejectDeny.pipe(z.union([NoulThresholdsSchema, DistributionThresholdsSchema]));
+
+export const ThresholdsOverrideSchema = z
+  .object({
+    deny: NoDeny,
+    ask: Probability.optional(),
+    advise: Probability.optional(),
+    minConfidence: Probability.optional(),
+    uncertain: z.object({ lo: Probability.optional(), hi: Probability.optional() }).optional(),
+  })
+  .strict();
 
 export const RuntimeSchema = z.object({
   runner: z.string().min(1),

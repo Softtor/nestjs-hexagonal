@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "An injected use case replaces the command bus, but the handler still only forwards DTO fields into its input object." }

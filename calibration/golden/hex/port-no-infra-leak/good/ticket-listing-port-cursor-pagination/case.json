@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "`cursor: string | null` is an opaque application-level pagination token, not a database or ORM cursor type, so the signature stays in domain terms."
+}

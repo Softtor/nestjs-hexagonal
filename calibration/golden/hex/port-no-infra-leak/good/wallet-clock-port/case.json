@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "A clock port exposing `now(): Date` and a boolean predicate over `Date` only uses primitives and `Date`, never naming a system clock or infrastructure library."
+}

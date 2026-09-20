@@ -120,7 +120,7 @@ No generic relay, no event maps, no custom broadcast events. Each event that nee
 
 ## Rulebook & CLI
 
-The architecture rules above also exist as a machine-readable **rulebook** (`rulebooks/hexagonal.rulebook.yaml`) and a checker CLI, `nestjs-hexagonal-check`, that runs the static rules over a set of files. Semantic rules (answered by a typed-judgment model) and runtime rules (package tests) are declared in the rulebook but are not executed by this version: the CLI reports them as skipped and never opens a network connection.
+The architecture rules above also exist as a machine-readable **rulebook** (`rulebooks/hexagonal.rulebook.yaml`) and a checker CLI, `nestjs-hexagonal-check`, that runs the static rules over a set of files offline. Semantic rules are answered by Jev, TypeSafe's typed-judgment model, only when `--classes semantic` is requested and `TYPESAFE_API_KEY` is set (see [Semantic checks (Jev)](#semantic-checks-jev)); runtime rules (package tests) are declared but not executed by this version.
 
 ### Running the checker
 
@@ -139,10 +139,11 @@ bunx nestjs-hexagonal-check --diff origin/main --format json
 | `--rulebook <path\|id>` | rulebook to run; an id resolves to `rulebooks/<id>.rulebook.yaml` in the plugin (`hexagonal`, `softtor-conventions`) |
 | `--project-rulebook <path>` | project rulebook; defaults to `$NESTJS_HEXAGONAL_RULEBOOK`, then `$CLAUDE_PROJECT_DIR/.claude/rulebook.yaml` |
 | `--files <glob\|dir\|file...>` / `--diff <base>` | files to check (globs, directories or files relative to the current directory) or the files changed since `<base>` (`git diff --relative` plus untracked files) |
-| `--classes static[,semantic,runtime]` | rule classes to run (`static` only in this version) |
+| `--classes static[,semantic,runtime]` | rule classes to run; `semantic` needs `TYPESAFE_API_KEY`, `runtime` is still inert |
 | `--format json\|text` | output format |
-| `--strict` | exit 1 when any FAIL finding exists |
-| `--explain` | list the rules applied to each file |
+| `--strict` | exit 1 when a static FAIL or a semantic `deny` exists |
+| `--fail-on-uncertain` | with `--strict`, exit 3 when a semantic answer is `uncertain` or `uncalibrated` |
+| `--explain` | list the rules applied to each file; with `semantic`, also the questions and the state slice sent |
 
 Each finding carries the rule id, severity (`FAIL`/`WARN`), path, line, evidence and the rule's `fix` text.
 
@@ -176,6 +177,20 @@ The `sha256` stamp pins the content of the base rulebook the project was calibra
 
 The runtime is `bun`; when it is absent the script falls back to `node --experimental-strip-types`.
 
+### Semantic checks (Jev)
+
+Five rules of the `hexagonal` rulebook are `semantic`: `hex/handler-no-business-rules`, `hex/port-no-infra-leak`, `hex/entity-not-anemic`, `hex/controller-thin` and `hex/no-overengineering`. They are questions that a regex cannot answer, so the CLI asks Jev (`jev-1.13.0`, pinned in the rulebook) and turns the probability into a decision.
+
+- **Enable:** export `TYPESAFE_API_KEY` and pass `--classes static,semantic`. Without the key the semantic rules are skipped with a one-line notice and the exit code is 0; the static rules keep working offline.
+- **What is sent:** one request per file and state slice, containing the rule preamble, the file path, the layer, the slice name and the code of that slice (the enclosing declaration of the change for handlers and controllers, the whole file for ports, entities and the over-engineering question) plus the rulebook questions. The whole file is sent only when the rule declares `slice: file`. The key travels in the `Authorization` header and never appears in the output, the JSONL log or the cache.
+- **When:** only on an explicit `--classes semantic` run. The plugin hooks (a later version) will add the same gate: project opted in with a rulebook, plugin subagent, key present.
+- **To whom:** `https://api.typesafe.ai/v1/systemone`. TypeSafe states it does not train on customer data; zero data retention is only available under an enterprise contract (`privacy@typesafe.ai`). Treat the code you check as shared with that provider.
+- **Local state:** with `CLAUDE_PLUGIN_DATA` set, answers are cached under `$CLAUDE_PLUGIN_DATA/cache` (keyed by state, questions, model pin and rulebook version), one JSONL line per call is appended to `$CLAUDE_PLUGIN_DATA/jev.jsonl` (rule ids, answer values, model, latency, tokens, decision; never the code nor the key) and a circuit breaker in `breaker.json` opens for five minutes after three failures in two minutes.
+- **Decisions:** `deny`, `ask`, `advise`, `pass`, `uncertain` (noul probability inside the abstention band, or choice/score confidence below `minConfidence`) and `uncalibrated` (the response model differs from the pin, or a base rulebook sha256 stamp does not match). `deny` requires fitted thresholds in `calibration/fitted/<pin>.json`, produced by the calibration harness from at least 30 good and 30 bad golden cases with precision >= 0.95; without them a rule yields at most `ask` and every finding is marked `calibrated: false`. `--strict` fails only on static FAIL and semantic `deny`.
+- **Disable:** `NESTJS_HEXAGONAL_DISABLE=1`, unset the key, or drop `semantic` from `--classes`.
+
+The calibration harness (`calibration/run.ts`, `calibration/fit.ts`, golden cases and the report) is documented in [`calibration/README.md`](calibration/README.md).
+
 ### Rulebooks shipped
 
 | Rulebook | Scope |
@@ -183,7 +198,7 @@ The runtime is `bun`; when it is absent the script falls back to `node --experim
 | `hexagonal` | project-agnostic hexagonal + DDD + CQRS rules (`hex/*`) |
 | `softtor-conventions` | multi-tenant scoping, no emoji, English identifiers (`softtor/*`); extend it only if those conventions apply |
 
-Static rules have golden fixtures under `calibration/golden/<rule-id>/{good,bad}/`; `bun test` fails if a static rule lacks fixtures or a fixture stops behaving as labelled.
+Static rules have golden fixtures under `calibration/golden/<rule-id>/{good,bad}/`; `bun test` fails if a static rule lacks fixtures or a fixture stops behaving as labelled. Semantic rules have labelled golden cases in the same tree (`<case-id>/case.json` plus one file), consumed by the calibration harness.
 
 ## Shared Examples
 

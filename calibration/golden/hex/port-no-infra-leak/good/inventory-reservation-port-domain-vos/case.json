@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "Every parameter and return type is a domain entity id, value object or plain object/Date declared for this port; nothing names a warehouse system, database or queue."
+}

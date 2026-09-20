@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "a plain port interface plus its injection token; it is not a use case, mapper, service or read model, so none of the four shapes apply."
+}

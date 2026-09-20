@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "reschedule() validates the new time against the blackout window fields before mutating scheduledAt, enforcing a cross-field invariant."
+}

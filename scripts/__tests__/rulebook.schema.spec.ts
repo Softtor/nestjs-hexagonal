@@ -1,6 +1,6 @@
 import './helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
-import { RuleSchema, RulebookSchema, parseRulebook } from '../lib/rulebook.schema.ts';
+import { RuleSchema, RulebookSchema, parseRulebook, OverrideSchema, formatIssues } from '../lib/rulebook.schema.ts';
 
 const staticRule = {
   id: 'hex/domain-no-nest-decorators',
@@ -28,7 +28,7 @@ const noulRule = {
   source: 'architecture-reviewer god handler',
   question: { type: 'noul', instructions: 'The handler contains a business rule.' },
   state: { slice: 'file', maxTokens: 4000, preamble: 'A CQRS handler.' },
-  thresholds: { deny: 0.9, ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } },
+  thresholds: { ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } },
 };
 
 const choiceRule = {
@@ -207,5 +207,19 @@ describe('RulebookSchema', () => {
     if (!result.ok) {
       expect(result.error).toContain('rules');
     }
+  });
+});
+
+describe('deny never comes from a rulebook', () => {
+  it('rejects thresholds.deny on a rule with a message pointing at the fitted file', () => {
+    const result = RuleSchema.safeParse({ ...noulRule, thresholds: { deny: 0.9, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } } });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(formatIssues(result.error)).toContain('thresholds.deny: deny is not allowed in a rulebook');
+  });
+
+  it('rejects thresholds.deny on an override', () => {
+    const result = OverrideSchema.safeParse({ id: 'hex/handler-no-business-rules', thresholds: { deny: 0.95 } });
+    expect(result.success).toBe(false);
   });
 });

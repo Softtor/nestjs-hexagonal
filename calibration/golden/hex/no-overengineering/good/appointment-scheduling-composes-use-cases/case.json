@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "composes two handlers (create then confirm) inside one database transaction; that composition justifies the service, not a delegating-service."
+}

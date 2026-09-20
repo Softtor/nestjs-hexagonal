@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Handler only loads, guards not-found/cross-tenant, delegates the cancel decision to subscription.cancel(), then saves and commits." }

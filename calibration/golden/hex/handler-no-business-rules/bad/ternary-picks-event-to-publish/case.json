@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "A ternary comparing tier ranks decides in the handler which of two events to publish, a business outcome that should be decided and emitted by the membership aggregate itself." }

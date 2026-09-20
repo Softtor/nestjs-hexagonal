@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The `send` method name and all parameter/return types are domain plain objects, primitives and Date, with no vendor SDK, ORM, HTTP, queue or cache concept named in the signature."
+}

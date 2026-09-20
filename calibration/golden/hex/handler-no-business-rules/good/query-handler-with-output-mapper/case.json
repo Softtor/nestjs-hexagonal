@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Query handler only loads the aggregate and delegates shaping to AppointmentOutputMapper.toOutput(), no business decision in the handler body." }

@@ -20,7 +20,20 @@ Compatible with GSD workflow.
 
 ## Rulebook (machine-readable rules)
 
-`rulebooks/hexagonal.rulebook.yaml` encodes the rules above; `scripts/check.ts` (entry `scripts/run.sh`, bin `nestjs-hexagonal-check`) runs the static ones. Semantic and runtime rules are declared but inert in this version; nothing is sent over the network. Projects opt in with `.claude/rulebook.yaml` (`extends` with sha256 stamps, own rules, overrides by id); `NESTJS_HEXAGONAL_DISABLE=1` turns everything off.
+`rulebooks/hexagonal.rulebook.yaml` encodes the rules above; `scripts/check.ts` (entry `scripts/run.sh`, bin `nestjs-hexagonal-check`) runs the static ones offline and, with `--classes semantic` and `TYPESAFE_API_KEY`, asks Jev the semantic ones (`scripts/lib/{jev-client,state-builder,decide,semantic-engine}.ts`). Runtime rules are still inert. Projects opt in with `.claude/rulebook.yaml` (`extends` with sha256 stamps, own rules, overrides by id); `NESTJS_HEXAGONAL_DISABLE=1` turns everything off.
+
+Semantic decisions (`scripts/lib/decide.ts`), per rule and per answer:
+
+| Outcome | noul (`answers[k].noul`) | choice / score (mass on violating options or levels) | Effect |
+|---|---|---|---|
+| `deny` | p >= fitted `deny` | mass >= fitted `deny` | `--strict` exits 1; only with `calibration/fitted/<pin>.json` (>= 30/30 golden cases, precision >= 0.95, zero FP) |
+| `ask` | p >= `ask` | mass >= `ask` | finding, exit 0 |
+| `advise` | p >= `advise` (default 0.55) | mass >= `advise` | finding, exit 0 |
+| `pass` | below `advise` and outside the band | below `advise` | no finding |
+| `uncertain` | p inside `uncertain.lo..hi` (default 0.35..0.65) | `confidence < minConfidence` (default 0.6) | listed apart; exit 3 only with `--strict --fail-on-uncertain` |
+| `uncalibrated` | response `model != pin` or `rulebook-mismatch` | same | listed apart, never deny |
+
+Fitted thresholds take precedence over rulebook thresholds over defaults; a rulebook `deny` is ignored so that no rule can deny before calibration. Rulebook thresholds only declare `advise` and the abstention band.
 
 | Rule id | Class | Severity | Source |
 |---|---|---|---|
@@ -46,7 +59,7 @@ Compatible with GSD workflow.
 | `softtor/no-emoji` | static | FAIL | Softtor style (`softtor-conventions`) |
 | `softtor/identifiers-english` | static | WARN | Softtor style (`softtor-conventions`) |
 
-Adding a static rule requires `calibration/golden/<rule-id>/{good,bad}/` fixtures (at least 2 each); `bun test ./scripts` enforces it. Keep `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` on the same version.
+Adding a static rule requires `calibration/golden/<rule-id>/{good,bad}/` fixtures (at least 2 each); a semantic rule requires labelled cases (`<case-id>/case.json` + one file, at least 8 good, 8 bad and 5 adversarial good); `bun test ./scripts ./calibration/__tests__` enforces both. Calibration (`calibration/run.ts` with the real key, then `calibration/fit.ts`) writes `calibration/fitted/<pin>.json` and `calibration/report.md`; it runs in CI only on push to `main` and weekly, never on pull requests. Keep `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` on the same version.
 
 ## Skills
 

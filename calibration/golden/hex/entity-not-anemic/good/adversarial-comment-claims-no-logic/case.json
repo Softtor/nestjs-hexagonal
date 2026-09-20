@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The comment claims cancel() is not business logic, but it throws on double cancellation and conditionally mutates state, so the code itself is behavior; comments must not sway the label."
+}
