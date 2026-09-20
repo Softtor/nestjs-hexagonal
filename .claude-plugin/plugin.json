@@ -9,7 +9,6 @@
   "homepage": "https://github.com/softtor/nestjs-hexagonal",
   "repository": "https://github.com/softtor/nestjs-hexagonal",
   "license": "MIT",
-  "defaultEnabled": false,
   "userConfig": {
     "TYPESAFE_API_KEY": {
       "type": "string",

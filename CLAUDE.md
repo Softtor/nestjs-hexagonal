@@ -30,7 +30,7 @@ Compatible with GSD workflow.
 | `SubagentStop` | the six pipeline agents | plugin agent | files = store paths + (`git diff`/untracked since start minus the baseline recorded at start); static FAIL -> `decision: block` at once, no Jev; clean stop -> semantic advisory under a 17 s deadline stored for the Agent hook; after 2 blocks -> release with `systemMessage` |
 | `PostToolUse` | `Agent` | completed plugin subagent | unresolved FAILs and the last semantic advisory of that `agentId` from the store as `additionalContext` |
 
-Every hook runs through `scripts/run.sh --hook <name>`, exits 0 whatever happens, never prints the key or a raw file body, and appends one line to `$CLAUDE_PLUGIN_DATA/logs/hooks-YYYYMMDD.jsonl` (`check.ts export-logs --since <date>` aggregates it). The key comes from `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY` (plugin `userConfig`) or `TYPESAFE_API_KEY`; the plugin ships `defaultEnabled: false`.
+Every hook runs through `scripts/run.sh --hook <name>`, exits 0 whatever happens, never prints the key or a raw file body, and appends one line to `$CLAUDE_PLUGIN_DATA/logs/hooks-YYYYMMDD.jsonl` (`check.ts export-logs --since <date>` aggregates it). The key comes from `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY` (plugin `userConfig`) or `TYPESAFE_API_KEY`. Opt-in is exclusively the `run.sh` gate (project `.claude/rulebook.yaml` or `NESTJS_HEXAGONAL_RULEBOOK`): never add `defaultEnabled: false` to `plugin.json`, because Claude Code 2.1.278 then reads `hooks.json` but registers neither hooks nor agents (`scripts/__tests__/hooks/plugin-manifest.spec.ts` guards this).
 
 Semantic decisions (`scripts/lib/decide.ts`), per rule and per answer:
 

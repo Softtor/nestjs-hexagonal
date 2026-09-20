@@ -63,6 +63,11 @@ describe('plugin manifest and hooks.json', () => {
     expect(shape.safeParse(plugin).success).toBe(true);
   });
 
+  it('does not declare defaultEnabled: Claude Code 2.1.278 reads hooks.json but registers neither hooks nor agents with it', () => {
+    const plugin: unknown = JSON.parse(readFileSync(join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
+    expect(typeof plugin === 'object' && plugin !== null && 'defaultEnabled' in plugin).toBe(false);
+  });
+
   it('subscribes only to the four events the README documents', () => {
     expect(Object.keys(parsed.hooks).sort()).toEqual(['PostToolUse', 'PreToolUse', 'SubagentStart', 'SubagentStop']);
   });

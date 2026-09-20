@@ -182,7 +182,7 @@ The runtime is `bun`; when it is absent the script falls back to `node --experim
 
 ### Hooks
 
-`hooks/hooks.json` subscribes to four events. Every handler goes through `run.sh --hook <name>`, so the opt-in gate, the path containment, the single execution source and the fail-open above apply to all of them. **In this version only a static FAIL blocks anything**; semantic answers are advisory text, and nothing blocks on `uncertain` or `uncalibrated`.
+`hooks/hooks.json` subscribes to four events. Every handler goes through `run.sh --hook <name>`, so the opt-in gate, the path containment, the single execution source and the fail-open above apply to all of them; that gate is the whole opt-in mechanism (see [Disclosure](#disclosure) for why the manifest does not use `defaultEnabled`). **In this version only a static FAIL blocks anything**; semantic answers are advisory text, and nothing blocks on `uncertain` or `uncalibrated`.
 
 | Hook | Fires for | What it does | Output | Budget |
 |---|---|---|---|---|
@@ -201,7 +201,8 @@ State lives under `$CLAUDE_PLUGIN_DATA` (`~/.claude/plugins/data/<id>/`; when th
 - **What is sent:** with a key present, one request per file and state slice containing the rule preamble, the file path, the layer, the slice name and the code of that slice plus the rulebook questions. The whole file is sent only when a rule declares `slice: file`. The key travels in the `Authorization` header and never appears in a hook output, a reason, the JSONL log or the cache; the hooks refuse to print any output that would contain the key or a raw file body.
 - **When:** only if all three hold: the project opted in with `.claude/rulebook.yaml` (or `NESTJS_HEXAGONAL_RULEBOOK`), the hook fires inside a plugin subagent (`agent_type` prefixed `nestjs-hexagonal:`, with an `agent_id`), and a key is configured. `PreToolUse` and `SubagentStart` never use the network. Static rules run offline for every agent.
 - **To whom:** `https://api.typesafe.ai/v1/systemone`. TypeSafe states it does not train on customer data; zero data retention is only available under an enterprise contract. Treat the code you check as shared with that provider.
-- **How to disable:** `NESTJS_HEXAGONAL_DISABLE=1` (everything), remove the project rulebook (all hooks stay silent), or remove the key (static only). The plugin installs disabled (`defaultEnabled: false`); `claude plugin enable nestjs-hexagonal` turns it on.
+- **How to disable:** `NESTJS_HEXAGONAL_DISABLE=1` (everything), remove the project rulebook (all hooks stay silent), or remove the key (static only).
+- **Opt-in is per project, not per install.** The only gate is the one in `run.sh`: a project without `.claude/rulebook.yaml` (or `NESTJS_HEXAGONAL_RULEBOOK`) never runs a hook, whatever the plugin state. The manifest deliberately does not set `defaultEnabled: false`: with that field Claude Code 2.1.278 reads `hooks/hooks.json` but registers neither the hooks nor the plugin agents (`create-subdomain` fails with "Agent type 'nestjs-hexagonal:domain-agent' not found"), so the field would disable the plugin instead of deferring its activation.
 
 ### Onboarding another project
 
