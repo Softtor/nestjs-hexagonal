@@ -10,8 +10,12 @@ import {
   rulebookPathForId,
   type ComposedRulebook,
 } from './lib/compose.ts';
+import { loadFitted } from './lib/decide.ts';
 import { registerBuiltinExecutors } from './lib/executors/index.ts';
+import { createJevClient, type FetchLike } from './lib/jev-client.ts';
 import { matchGlob, normalizePath } from './lib/scope.ts';
+import { explainRequests, planSemanticRequests, runSemanticRules, type SemanticExplain, type SemanticFinding } from './lib/semantic-engine.ts';
+import type { Hunk } from './lib/state-builder.ts';
 import { runStaticRules, type Finding, type SourceFile } from './lib/static-engine.ts';
 import type { RuleClass } from './lib/rulebook.schema.ts';
 
@@ -24,6 +28,7 @@ export interface CliOptions {
   cwd: string;
   env: Record<string, string | undefined>;
   pluginRoot: string;
+  fetchImpl?: FetchLike;
 }
 
 interface ParsedArgs {
@@ -34,6 +39,7 @@ interface ParsedArgs {
   classes: RuleClass[];
   format: 'json' | 'text';
   strict: boolean;
+  failOnUncertain: boolean;
   explain: boolean;
   hook?: string;
   help: boolean;
@@ -47,9 +53,10 @@ const USAGE = `Usage: nestjs-hexagonal-check [options]
   --project-rulebook <path>   project rulebook (default: $NESTJS_HEXAGONAL_RULEBOOK or $CLAUDE_PROJECT_DIR/.claude/rulebook.yaml)
   --files <glob...>           files to check, as globs relative to the current directory
   --diff <base>               check the files changed since <base> (git diff --name-only <base>)
-  --classes <list>            comma-separated rule classes to run (default: static)
+  --classes <list>            comma-separated rule classes to run (default: static); semantic needs TYPESAFE_API_KEY
   --format json|text          output format (default: text)
-  --strict                    exit 1 when any FAIL finding exists
+  --strict                    exit 1 when a static FAIL or a semantic deny exists
+  --fail-on-uncertain         with --strict, exit 3 when a semantic answer is uncertain or uncalibrated
   --explain                   list the rules applied to each file
   --help                      show this message
 `;
@@ -62,7 +69,7 @@ function isRuleClass(value: string): value is RuleClass {
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
-  const parsed: ParsedArgs = { files: [], classes: ['static'], format: 'text', strict: false, explain: false, help: false };
+  const parsed: ParsedArgs = { files: [], classes: ['static'], format: 'text', strict: false, failOnUncertain: false, explain: false, help: false };
   let i = 0;
   const takeValue = (flag: string): string => {
     const value = argv[i + 1];
@@ -114,6 +121,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
       case '--strict':
         parsed.strict = true;
+        break;
+      case '--fail-on-uncertain':
+        parsed.failOnUncertain = true;
         break;
       case '--explain':
         parsed.explain = true;
@@ -232,6 +242,34 @@ function changedFiles(base: string, cwd: string): string[] {
   return [...new Set(paths)].sort();
 }
 
+const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+
+export function parseUnifiedDiff(diff: string): Record<string, Hunk[]> {
+  const hunks: Record<string, Hunk[]> = {};
+  let current: string | null = null;
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++ ')) {
+      const target = line.slice(4).trim();
+      current = target === '/dev/null' ? null : normalizePath(target.replace(/^b\//, ''));
+      continue;
+    }
+    const header = HUNK_HEADER.exec(line);
+    if (header && current !== null) {
+      const start = Number(header[1]);
+      const count = header[2] === undefined ? 1 : Number(header[2]);
+      if (count > 0) {
+        (hunks[current] ??= []).push({ start, end: start + count - 1 });
+      }
+    }
+  }
+  return hunks;
+}
+
+function changedHunks(base: string, cwd: string): Record<string, Hunk[]> {
+  const diff = execFileSync('git', ['diff', '--unified=0', '--relative', '--diff-filter=ACMR', base], { cwd, encoding: 'utf8' });
+  return parseUnifiedDiff(diff);
+}
+
 const PROJECT_TREE_IGNORED = new Set(['node_modules', '.git', 'dist']);
 const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
 
@@ -267,22 +305,57 @@ function readSources(paths: string[], cwd: string): SourceFile[] {
   return paths.map((path) => ({ path, content: readFileSync(resolve(cwd, path), 'utf8') }));
 }
 
+type AnyFinding = Finding | SemanticFinding;
+
+interface SemanticSummary {
+  requests: number;
+  cached: number;
+  inputTokens: number;
+  skippedReason?: string;
+}
+
 interface Report {
-  rulebook: { id: string; version: string; path: string };
+  rulebook: { id: string; version: string; path: string; pin: string };
   uncalibrated: boolean;
   warnings: string[];
   files: number;
-  findings: Finding[];
+  findings: AnyFinding[];
   skipped: { semantic: string[]; runtime: string[] };
+  semantic?: SemanticSummary;
   explain?: Record<string, string[]>;
+  explainSemantic?: SemanticExplain[];
+}
+
+const DECISION_ORDER: Array<SemanticFinding['decision']> = ['deny', 'ask', 'advise', 'uncertain', 'uncalibrated'];
+
+function isSemantic(finding: AnyFinding): finding is SemanticFinding {
+  return finding.class === 'semantic';
+}
+
+function location(finding: AnyFinding): string {
+  return finding.line === undefined ? finding.path : `${finding.path}:${finding.line}`;
 }
 
 function formatText(report: Report): string {
   const lines: string[] = [];
-  for (const finding of report.findings) {
-    const location = finding.line === undefined ? finding.path : `${finding.path}:${finding.line}`;
-    lines.push(`${location} ${finding.severity} ${finding.ruleId}: ${finding.evidence}`);
+  const statics = report.findings.filter((finding) => !isSemantic(finding));
+  const semantics = report.findings.filter(isSemantic);
+  for (const finding of statics) {
+    lines.push(`${location(finding)} ${finding.severity} ${finding.ruleId}: ${finding.evidence}`);
     lines.push(`  fix: ${finding.fix}`);
+  }
+  for (const decision of DECISION_ORDER) {
+    const group = semantics.filter((finding) => finding.decision === decision);
+    if (group.length === 0) {
+      continue;
+    }
+    lines.push('');
+    lines.push(`semantic ${decision} (${group.length}):`);
+    for (const finding of group) {
+      const calibration = finding.calibrated ? '' : ' [not calibrated]';
+      lines.push(`${location(finding)} ${finding.severity} ${finding.ruleId}: ${finding.evidence}${calibration}`);
+      lines.push(`  fix: ${finding.fix}`);
+    }
   }
   if (report.explain) {
     lines.push('');
@@ -290,46 +363,154 @@ function formatText(report: Report): string {
       lines.push(`${path}: ${ruleIds.join(', ')}`);
     }
   }
-  const fails = report.findings.filter((finding) => finding.severity === 'FAIL').length;
-  const warns = report.findings.length - fails;
+  if (report.explainSemantic) {
+    for (const entry of report.explainSemantic) {
+      lines.push('');
+      lines.push(`${entry.path} [slice ${entry.slice}]`);
+      for (const [ruleId, question] of Object.entries(entry.questions)) {
+        lines.push(`  ${ruleId} (${question.type}): ${question.instructions}`);
+      }
+      lines.push('  state.code:');
+      for (const line of entry.code.split('\n')) {
+        lines.push(`    ${line}`);
+      }
+    }
+  }
+  const fails = statics.filter((finding) => finding.severity === 'FAIL').length;
+  const warns = statics.length - fails;
   const calibration = report.uncalibrated ? ', uncalibrated' : '';
   lines.push('');
   lines.push(`${fails} FAIL, ${warns} WARN in ${report.files} file(s) (rulebook ${report.rulebook.id} ${report.rulebook.version}${calibration})`);
+  if (report.semantic) {
+    const counts = DECISION_ORDER.map((decision) => `${semantics.filter((finding) => finding.decision === decision).length} ${decision}`).join(', ');
+    const cached = report.semantic.cached > 0 ? `, ${report.semantic.cached} cached` : '';
+    lines.push(`semantic: ${counts} (${report.semantic.requests} request(s)${cached}, ${report.semantic.inputTokens} input tokens, model ${report.rulebook.pin})`);
+  }
   return `${lines.join('\n')}\n`;
 }
 
-function buildReport(composed: ComposedRulebook, rulebookPath: string, files: SourceFile[], args: ParsedArgs, io: CliIo, cwd: string): Report {
+function sortFindings(findings: AnyFinding[]): AnyFinding[] {
+  return findings.sort((a, b) => a.path.localeCompare(b.path) || (a.line ?? 0) - (b.line ?? 0) || a.ruleId.localeCompare(b.ruleId));
+}
+
+function pluginDataPaths(env: Record<string, string | undefined>): { cacheDir?: string; logPath?: string; breakerPath?: string } {
+  const dataDir = env.CLAUDE_PLUGIN_DATA;
+  if (dataDir === undefined || dataDir === '') {
+    return {};
+  }
+  return { cacheDir: join(dataDir, 'cache'), logPath: join(dataDir, 'jev.jsonl'), breakerPath: join(dataDir, 'breaker.json') };
+}
+
+async function runSemantic(
+  composed: ComposedRulebook,
+  files: SourceFile[],
+  hunksByPath: Record<string, Hunk[]>,
+  io: CliIo,
+  options: CliOptions,
+): Promise<{ findings: SemanticFinding[]; warnings: string[]; summary: SemanticSummary; applied: Record<string, string[]> }> {
+  const rules = composed.rules.filter((rule) => rule.class === 'semantic');
+  const pin = composed.rulebook.model.pin;
+  const empty = { findings: [], warnings: [], applied: {} };
+  if (rules.length === 0) {
+    return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0 } };
+  }
+  const apiKey = options.env.TYPESAFE_API_KEY ?? options.env.CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY;
+  if (apiKey === undefined || apiKey === '') {
+    const reason = `TYPESAFE_API_KEY is not set; skipped ${rules.length} semantic rule(s)`;
+    io.stderr(`${reason}\n`);
+    return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, skippedReason: reason } };
+  }
+  const fitted = loadFitted(join(options.pluginRoot, 'calibration', 'fitted'), pin);
+  const client = createJevClient({
+    apiKey,
+    pin,
+    rulebookVersion: composed.rulebook.version,
+    timeoutMs: 8_000,
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    ...pluginDataPaths(options.env),
+  });
+  const result = await runSemanticRules(rules, files, { client, fitted, uncalibrated: composed.uncalibrated, hunksByPath });
+  const warnings = [...result.warnings];
+  if (fitted === null) {
+    warnings.push(`no fitted thresholds for ${pin} (calibration/fitted/${pin}.json); semantic decisions are advisory and never deny`);
+  }
+  return {
+    findings: result.findings,
+    warnings,
+    applied: result.applied,
+    summary: { requests: result.requests, cached: result.cached, inputTokens: result.inputTokens },
+  };
+}
+
+async function buildReport(
+  composed: ComposedRulebook,
+  rulebookPath: string,
+  files: SourceFile[],
+  hunksByPath: Record<string, Hunk[]>,
+  args: ParsedArgs,
+  io: CliIo,
+  options: CliOptions,
+): Promise<Report> {
   const skipped: Report['skipped'] = { semantic: [], runtime: [] };
-  for (const cls of args.classes) {
-    if (cls === 'static') {
-      continue;
-    }
-    const ids = composed.rules.filter((rule) => rule.class === cls).map((rule) => rule.id);
-    skipped[cls] = ids;
-    if (ids.length > 0) {
-      io.stderr(`rule class '${cls}' is not implemented in this version; skipped ${ids.length} rule(s)\n`);
+  if (args.classes.includes('runtime')) {
+    skipped.runtime = composed.rules.filter((rule) => rule.class === 'runtime').map((rule) => rule.id);
+    if (skipped.runtime.length > 0) {
+      io.stderr(`rule class 'runtime' is not implemented in this version; skipped ${skipped.runtime.length} rule(s)\n`);
     }
   }
 
   const staticResult = args.classes.includes('static')
-    ? runStaticRules(composed.rules, files, { projectFiles: () => projectSources(cwd) })
+    ? runStaticRules(composed.rules, files, { projectFiles: () => projectSources(options.cwd) })
     : { findings: [], warnings: [], applied: {} };
 
   const report: Report = {
-    rulebook: { id: composed.rulebook.id, version: composed.rulebook.version, path: rulebookPath },
+    rulebook: { id: composed.rulebook.id, version: composed.rulebook.version, path: rulebookPath, pin: composed.rulebook.model.pin },
     uncalibrated: composed.uncalibrated,
     warnings: [...composed.warnings, ...staticResult.warnings],
     files: files.length,
-    findings: staticResult.findings.sort((a, b) => a.path.localeCompare(b.path) || (a.line ?? 0) - (b.line ?? 0)),
+    findings: [...staticResult.findings],
     skipped,
   };
+  const explain: Record<string, string[]> = { ...staticResult.applied };
+
+  if (args.classes.includes('semantic')) {
+    const semantic = await runSemantic(composed, files, hunksByPath, io, options);
+    report.findings.push(...semantic.findings);
+    report.warnings.push(...semantic.warnings);
+    report.semantic = semantic.summary;
+    if (semantic.summary.skippedReason !== undefined) {
+      skipped.semantic = composed.rules.filter((rule) => rule.class === 'semantic').map((rule) => rule.id);
+    }
+    if (args.explain) {
+      const plan = planSemanticRequests(composed.rules, files, hunksByPath);
+      for (const [path, ruleIds] of Object.entries(plan.applied)) {
+        explain[path] = [...(explain[path] ?? []), ...ruleIds];
+      }
+      report.explainSemantic = explainRequests(plan);
+    }
+  }
+
+  sortFindings(report.findings);
   if (args.explain) {
-    report.explain = staticResult.applied;
+    report.explain = explain;
   }
   return report;
 }
 
-export function runCli(argv: string[], io: CliIo, options: CliOptions): number {
+function exitCode(report: Report, args: ParsedArgs): number {
+  if (!args.strict) {
+    return 0;
+  }
+  const staticFail = report.findings.some((finding) => !isSemantic(finding) && finding.severity === 'FAIL');
+  const deny = report.findings.some((finding) => isSemantic(finding) && finding.decision === 'deny');
+  if (staticFail || deny) {
+    return 1;
+  }
+  const undecided = report.findings.some((finding) => isSemantic(finding) && (finding.decision === 'uncertain' || finding.decision === 'uncalibrated'));
+  return args.failOnUncertain && undecided ? 3 : 0;
+}
+
+export async function runCli(argv: string[], io: CliIo, options: CliOptions): Promise<number> {
   let args: ParsedArgs;
   try {
     args = parseArgs(argv);
@@ -340,6 +521,11 @@ export function runCli(argv: string[], io: CliIo, options: CliOptions): number {
 
   if (args.help) {
     io.stdout(USAGE);
+    return 0;
+  }
+
+  if (options.env.NESTJS_HEXAGONAL_DISABLE === '1') {
+    io.stderr('NESTJS_HEXAGONAL_DISABLE=1, nothing to do\n');
     return 0;
   }
 
@@ -358,19 +544,18 @@ export function runCli(argv: string[], io: CliIo, options: CliOptions): number {
       throw new UsageError('pass --files <glob...> or --diff <base>');
     }
     const paths = args.diff !== undefined ? changedFiles(args.diff, options.cwd) : expandGlobs(args.files, options.cwd);
+    const hunksByPath = args.diff !== undefined && args.classes.includes('semantic') ? changedHunks(args.diff, options.cwd) : {};
     const files = readSources(paths, options.cwd);
     if (files.length === 0) {
       io.stderr(`warning: no files matched ${args.diff !== undefined ? `--diff ${args.diff}` : args.files.join(' ')}; nothing was checked\n`);
     }
 
-    const report = buildReport(composed, rulebookPath, files, args, io, options.cwd);
+    const report = await buildReport(composed, rulebookPath, files, hunksByPath, args, io, options);
     for (const warning of report.warnings) {
       io.stderr(`warning: ${warning}\n`);
     }
     io.stdout(args.format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : formatText(report));
-
-    const hasFail = report.findings.some((finding) => finding.severity === 'FAIL');
-    return args.strict && hasFail ? 1 : 0;
+    return exitCode(report, args);
   } catch (error) {
     if (error instanceof UsageError) {
       io.stderr(`${error.message}\n${USAGE}`);
@@ -394,7 +579,7 @@ function isMainModule(): boolean {
 
 if (isMainModule()) {
   const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-  const code = runCli(
+  const code = await runCli(
     process.argv.slice(2),
     { stdout: (text) => process.stdout.write(text), stderr: (text) => process.stderr.write(text) },
     { cwd: process.cwd(), env: process.env, pluginRoot },
