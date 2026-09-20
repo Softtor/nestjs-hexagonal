@@ -1,0 +1,65 @@
+# Softtor house conventions that are not part of hexagonal architecture:
+# multi-tenant scoping, no emoji in code, English identifiers. Projects that
+# are not multi-tenant extend only the hexagonal rulebook.
+$schema: nestjs-hexagonal/rulebook@1
+id: softtor-conventions
+version: 1.2.0
+extends: []
+model:
+  provider: typesafe
+  pin: jev-1.13.0
+
+rules:
+  - id: softtor/tenant-scoped-query
+    title: Repository queries are scoped by organizationId
+    layer: infrastructure
+    scope:
+      include: ['**/infrastructure/**/*.repository.ts', '**/infrastructure/**/repositories/**/*.ts']
+      exclude: ['**/in-memory/**', '**/__tests__/**', '**/*.spec.ts']
+    class: static
+    severity: FAIL
+    rationale: >-
+      A findMany, findFirst, update or delete without organizationId in its
+      arguments reads or writes across tenants.
+    fix: Add `organizationId` to the `where` clause of the call (or scope by the tenant field the model uses).
+    source: review-subdomain I7; architecture-reviewer tenant leakage
+    check:
+      kind: regex
+      pattern: '\.(?:findMany|findFirst|updateMany|deleteMany|update|delete)\s*\((?![^;]*organizationId)'
+    tags: [multi-tenant]
+
+  - id: softtor/no-emoji
+    title: No emoji in source code
+    layer: any
+    scope:
+      include: ['**/*.ts', '**/*.tsx']
+    class: static
+    severity: FAIL
+    rationale: Emoji in strings, logs or comments break grep, terminals and log pipelines.
+    fix: Replace the emoji with plain text.
+    source: Softtor code style (CLAUDE.md); harness pt-br conventions
+    check:
+      kind: regex
+      pattern: '[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}]'
+      flags: u
+    tags: [style]
+
+  - id: softtor/identifiers-english
+    title: Identifiers are written in English
+    layer: any
+    scope:
+      include: ['**/*.ts', '**/*.tsx']
+      exclude: ['**/__tests__/**', '**/*.spec.ts', '**/*.test.ts']
+    class: static
+    severity: WARN
+    rationale: >-
+      Code identifiers are English; Portuguese stays in tests, comments,
+      docs and UI copy. Heuristic on common Portuguese stems in declarations;
+      grandfather legacy paths through a scope override.
+    fix: Rename the identifier in English (for example `usuario` -> `user`, `criarPedido` -> `createOrder`).
+    source: Softtor conventions (identifiers in English)
+    check:
+      kind: regex
+      pattern: '\b(?:const|let|var|function|class|interface|type|enum)\s+\w*(?:(?:[cç][aã]o|[cç][oõ]es)(?=[A-Z_\d]|\b)|usuario|pedido|tarefa|mensagem|empresa|endereco|telefone|senha|buscar|atualizar|salvar|validar|enviar|criar|obter|cadastr)\w*'
+      flags: i
+    tags: [style]
