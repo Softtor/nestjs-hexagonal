@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const RULEBOOK_SCHEMA_ID = 'nestjs-hexagonal/rulebook@1';
 
 const RULE_ID_PATTERN = /^[a-z0-9-]+\/[a-z0-9-]+$/;
-const REGEX_FLAGS_PATTERN = /^[dgimsuvy]*$/;
+const REGEX_FLAGS_PATTERN = /^[gimsuv]*$/;
 
 function isValidRegex(pattern: string, flags: string): boolean {
   try {
@@ -22,8 +22,12 @@ const RegexCheckSchema = z
     mustMatch: z.boolean().default(false),
     maxMatches: z.number().int().nonnegative().optional(),
     whenPattern: z.string().min(1).optional(),
+    unlessInEnclosingDeclaration: z.string().min(1).optional(),
   })
   .superRefine((check, ctx) => {
+    if (check.unlessInEnclosingDeclaration !== undefined && !isValidRegex(check.unlessInEnclosingDeclaration, '')) {
+      ctx.addIssue({ code: 'custom', path: ['unlessInEnclosingDeclaration'], message: 'invalid regular expression' });
+    }
     if (!isValidRegex(check.pattern, check.flags)) {
       ctx.addIssue({ code: 'custom', path: ['pattern'], message: 'invalid regular expression' });
     }

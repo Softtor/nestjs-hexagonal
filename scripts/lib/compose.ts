@@ -40,6 +40,7 @@ function collectRules(
   rulebook: Rulebook,
   resolve: BaseResolver,
   visiting: Set<string>,
+  collected: Map<string, string>,
   warnings: string[],
 ): { rules: Rule[]; sources: Record<string, string> } {
   if (visiting.has(rulebook.id)) {
@@ -55,12 +56,20 @@ function collectRules(
     if (!base) {
       throw new RulebookCompositionError(`rulebook '${rulebook.id}' extends unknown base '${entry.id}'`);
     }
+    const alreadyCollected = collected.get(entry.id);
+    if (alreadyCollected !== undefined) {
+      if (alreadyCollected !== entry.sha256) {
+        warnings.push(`rulebook-mismatch for '${entry.id}': '${rulebook.id}' stamps ${entry.version}@${entry.sha256.slice(0, 8)} but the base was already composed as @${alreadyCollected.slice(0, 8)}`);
+      }
+      continue;
+    }
+    collected.set(entry.id, base.sha256);
     if (base.sha256 !== entry.sha256) {
       warnings.push(
         `rulebook-mismatch for '${entry.id}': expected ${entry.version}@${entry.sha256.slice(0, 8)}, found ${base.rulebook.version}@${base.sha256.slice(0, 8)} (${base.path}); decisions are uncalibrated`,
       );
     }
-    const inherited = collectRules(base.rulebook, resolve, visiting, warnings);
+    const inherited = collectRules(base.rulebook, resolve, visiting, collected, warnings);
     for (const rule of inherited.rules) {
       if (sources[rule.id] !== undefined) {
         throw new RulebookCompositionError(
@@ -135,7 +144,7 @@ function applyOverride(rule: Rule, override: Override): Rule | null {
 
 export function composeRulebook(rulebook: Rulebook, resolve: BaseResolver): ComposedRulebook {
   const warnings: string[] = [];
-  const collected = collectRules(rulebook, resolve, new Set(), warnings);
+  const collected = collectRules(rulebook, resolve, new Set(), new Map(), warnings);
   const byId = new Map(collected.rules.map((rule) => [rule.id, rule]));
 
   for (const override of rulebook.overrides) {

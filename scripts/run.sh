@@ -95,8 +95,22 @@ fi
 export NESTJS_HEXAGONAL_BINARY_SOURCE=plugin-root
 check_script="$self_root/scripts/check.ts"
 
-if [ ! -d "$self_root/node_modules/zod" ] || [ ! -d "$self_root/node_modules/yaml" ]; then
-  echo "nestjs-hexagonal-check: dependencies missing in $self_root; run 'bun install' in $self_root (skipping)" >&2
+deps_found=0
+probe_dir=$self_root
+while :; do
+  if [ -d "$probe_dir/node_modules/zod" ] && [ -d "$probe_dir/node_modules/yaml" ]; then
+    deps_found=1
+    break
+  fi
+  parent=$(dirname "$probe_dir")
+  if [ "$parent" = "$probe_dir" ]; then
+    break
+  fi
+  probe_dir=$parent
+done
+
+if [ "$deps_found" -eq 0 ]; then
+  echo "nestjs-hexagonal-check: dependencies missing in $self_root (zod, yaml not found in any parent node_modules); run 'bun install' in $self_root or in the project that installed it (skipping)" >&2
   if [ "$hook_mode" -eq 1 ]; then
     exit 0
   fi

@@ -144,6 +144,7 @@ describe('RuleSchema', () => {
     const kinds = [
       { kind: 'regex', pattern: 'foo', flags: 'gi' },
       { kind: 'regex', pattern: 'foo', mustMatch: true },
+      { kind: 'regex', pattern: 'foo', unlessInEnclosingDeclaration: 'organizationId' },
       { kind: 'required-import', modules: ['**/*data-builder*'], whenPattern: 'Entity\\.create\\(' },
       { kind: 'line-count', selector: 'method', name: 'execute', max: 20 },
       { kind: 'line-count', selector: 'file', max: 300 },
@@ -153,8 +154,17 @@ describe('RuleSchema', () => {
       expect(RuleSchema.safeParse({ ...staticRule, check }).success).toBe(true);
     }
     expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'regex', pattern: '(', flags: 'g' } }).success).toBe(false);
+    expect(RuleSchema.parse({ ...staticRule, check: { kind: 'regex', pattern: 'x', unlessInEnclosingDeclaration: 'organizationId' } }).check).toMatchObject({ unlessInEnclosingDeclaration: 'organizationId' });
+    expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'regex', pattern: 'x', unlessInEnclosingDeclaration: '(' } }).success).toBe(false);
     expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'regex', pattern: 'x', flags: 'q' } }).success).toBe(false);
     expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'nope' } }).success).toBe(false);
+  });
+
+  it('rejects sticky and indices regex flags', () => {
+    for (const flags of ['y', 'd', 'gy', 'dg']) {
+      expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'regex', pattern: 'x', flags } }).success).toBe(false);
+    }
+    expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'regex', pattern: 'x', flags: 'gimsu' } }).success).toBe(true);
   });
 
   it('defaults tags and scope.exclude', () => {

@@ -67,6 +67,11 @@ describe('extractImports', () => {
     ]);
     expect(imports[1]?.line).toBe(2);
   });
+
+  it('finds dynamic and typeof imports', () => {
+    const source = "const mod = await import('@nestjs/common');\ntype Prisma = typeof import('@prisma/client');\nimport('./side');\n";
+    expect(extractImports(source).map((entry) => `${entry.specifier}@${entry.line}`)).toEqual(['@nestjs/common@1', '@prisma/client@2', './side@3']);
+  });
 });
 
 describe('regex check', () => {
@@ -101,6 +106,28 @@ describe('regex check', () => {
     const handler = file('h.ts', '@EventsHandler(E)\nclass H { handle() { this.repo.find(); } }');
     expect(runStaticRules([rule], [plain]).findings).toHaveLength(0);
     expect(runStaticRules([rule], [handler]).findings).toHaveLength(1);
+  });
+
+  it('drops matches whose enclosing declaration contains unlessInEnclosingDeclaration', () => {
+    const rule = makeRule({ check: { kind: 'regex', pattern: 'this\\.prisma\\.\\w+\\.findMany\\s*\\(', unlessInEnclosingDeclaration: 'organizationId' } });
+    const scoped = [
+      'class Repo {',
+      '  async list(organizationId: string) {',
+      '    const where = { organizationId };',
+      '    if (where) {',
+      '      return this.prisma.order.findMany({ where });',
+      '    }',
+      '  }',
+      '',
+      '  async all() {',
+      '    return this.prisma.order.findMany();',
+      '  }',
+      '}',
+      'const rows = this.prisma.order.findMany({ where: { organizationId: id } });',
+      'const leak = this.prisma.order.findMany();',
+    ].join('\n');
+    const result = runStaticRules([rule], [file('r.ts', scoped)]);
+    expect(result.findings.map((finding) => finding.line)).toEqual([10, 14]);
   });
 
   it('respects the rule scope', () => {
@@ -176,6 +203,13 @@ describe('line-count check', () => {
     expect(result.findings[0]?.evidence).toContain('5 lines');
   });
 
+  it('does not treat if/for/while/switch/catch blocks as methods', () => {
+    const rule = makeRule({ check: { kind: 'line-count', selector: 'method', max: 2 } });
+    const source = 'class H {\n  run(): void {\n    a();\n  }\n}\nif (x) {\n  a();\n  b();\n  c();\n}\nfor (const y of z) {\n  a();\n  b();\n  c();\n}\ntry {\n} catch (error) {\n  a();\n  b();\n  c();\n}';
+    const result = runStaticRules([rule], [file('k.ts', source)]);
+    expect(result.findings.map((finding) => finding.line)).toEqual([2]);
+  });
+
   it('does not treat a call as a declaration', () => {
     const rule = makeRule({ check: { kind: 'line-count', selector: 'method', name: 'execute', max: 1 } });
     expect(runStaticRules([rule], [file('c.ts', 'await this.handler.execute(\n cmd,\n);')]).findings).toHaveLength(0);
@@ -190,6 +224,13 @@ describe('line-count check', () => {
     const whole = makeRule({ check: { kind: 'line-count', selector: 'file', max: 2 } });
     expect(runStaticRules([whole], [file('f.ts', 'a\nb\nc')]).findings).toHaveLength(1);
     expect(runStaticRules([whole], [file('f.ts', 'a\nb')]).findings).toHaveLength(0);
+  });
+
+  it('does not count the trailing newline as a line for the file selector', () => {
+    const whole = makeRule({ check: { kind: 'line-count', selector: 'file', max: 2 } });
+    expect(runStaticRules([whole], [file('f.ts', 'a\nb\n')]).findings).toHaveLength(0);
+    expect(runStaticRules([whole], [file('f.ts', 'a\nb\nc\n')]).findings).toHaveLength(1);
+    expect(runStaticRules([whole], [file('f.ts', '')]).findings).toHaveLength(0);
   });
 });
 

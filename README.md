@@ -138,7 +138,7 @@ bunx nestjs-hexagonal-check --diff origin/main --format json
 |---|---|
 | `--rulebook <path\|id>` | rulebook to run; an id resolves to `rulebooks/<id>.rulebook.yaml` in the plugin (`hexagonal`, `softtor-conventions`) |
 | `--project-rulebook <path>` | project rulebook; defaults to `$NESTJS_HEXAGONAL_RULEBOOK`, then `$CLAUDE_PROJECT_DIR/.claude/rulebook.yaml` |
-| `--files <glob...>` / `--diff <base>` | files to check (globs relative to the current directory) or `git diff --name-only <base>` |
+| `--files <glob\|dir\|file...>` / `--diff <base>` | files to check (globs, directories or files relative to the current directory) or the files changed since `<base>` (`git diff --relative` plus untracked files) |
 | `--classes static[,semantic,runtime]` | rule classes to run (`static` only in this version) |
 | `--format json\|text` | output format |
 | `--strict` | exit 1 when any FAIL finding exists |

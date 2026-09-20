@@ -220,6 +220,77 @@ describe('runCli', () => {
     expect(report.findings.map((finding) => finding.path)).toEqual(['bc/domain/dirty.ts']);
   });
 
+  it('resolves --diff paths from a subdirectory and includes untracked files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hex-git-sub-'));
+    const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q', '-b', 'main');
+    mkdirSync(join(dir, 'bc', 'domain'), { recursive: true });
+    writeFileSync(join(dir, 'bc', 'domain', 'clean.ts'), 'export const clean = 1;\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    writeFileSync(join(dir, 'bc', 'domain', 'dirty.ts'), "import { Injectable } from '@nestjs/common';\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'dirty');
+    writeFileSync(join(dir, 'bc', 'domain', 'untracked.ts'), "import { Module } from '@nestjs/common';\n");
+
+    const fromRoot = runJson(['--rulebook', 'hexagonal', '--diff', 'HEAD~1'], {}, dir);
+    expect(fromRoot.report.findings.map((finding) => finding.path)).toEqual(['bc/domain/dirty.ts', 'bc/domain/untracked.ts']);
+
+    const fromSubdir = runJson(['--rulebook', 'hexagonal', '--diff', 'HEAD~1'], {}, join(dir, 'bc'));
+    expect(fromSubdir.report.findings.map((finding) => finding.path)).toEqual(['domain/dirty.ts', 'domain/untracked.ts']);
+    expect(fromSubdir.report.findings.map((finding) => finding.ruleId)).toEqual(fromRoot.report.findings.map((finding) => finding.ruleId));
+  });
+
+  it('warns on stderr when --strict runs over zero eligible files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hex-git-empty-'));
+    const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q', '-b', 'main');
+    writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    const { code, io } = run(['--rulebook', 'hexagonal', '--diff', 'HEAD', '--strict'], {}, dir);
+    expect(code).toBe(0);
+    expect(io.err.join('')).toContain('no files');
+    const globs = run(['--rulebook', 'hexagonal', '--files', 'nothing/**', '--strict'], {}, dir);
+    expect(globs.io.err.join('')).toContain('no files');
+  });
+
+  it('counts over the git tree when --diff narrows the checked set', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hex-git-tree-'));
+    const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q', '-b', 'main');
+    mkdirSync(join(dir, 'src', 'x', 'application', 'helpers'), { recursive: true });
+    mkdirSync(join(dir, 'src', 'x', 'application', 'commands'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'x', 'application', 'helpers', 'normalize.ts'), 'export function normalizeName(name: string): string {\n  return name.trim();\n}\n');
+    writeFileSync(join(dir, 'src', 'x', 'application', 'commands', 'a.handler.ts'), "import { normalizeName } from '../helpers/normalize';\nnormalizeName('a');\n");
+    writeFileSync(join(dir, 'src', 'x', 'application', 'commands', 'b.handler.ts'), "import { normalizeName } from '../helpers/normalize';\nnormalizeName('b');\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    writeFileSync(join(dir, 'src', 'x', 'application', 'helpers', 'normalize.ts'), 'export function normalizeName(name: string): string {\n  return name.trim().toLowerCase();\n}\n');
+    writeFileSync(join(dir, 'src', 'x', 'application', 'commands', 'a.handler.ts'), "import { normalizeName } from '../helpers/normalize';\nnormalizeName('A');\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'touch helper and one caller');
+    const { report } = runJson(['--rulebook', 'hexagonal', '--diff', 'HEAD~1'], {}, join(dir, 'src'));
+    expect(report.findings.filter((finding) => finding.ruleId === 'hex/no-overengineering-static')).toEqual([]);
+  });
+
+  it('walks a directory passed to --files', () => {
+    const { report } = runJson(['--rulebook', 'hexagonal', '--files', 'calibration/golden/hex/no-circular-import/bad']);
+    expect(report.findings.length).toBeGreaterThan(0);
+    expect(report.findings.every((finding) => finding.path.startsWith('calibration/golden/hex/no-circular-import/bad/'))).toBe(true);
+  });
+
+  it('exits 2 when --project-rulebook points to a missing file', () => {
+    const { code, io } = run(['--project-rulebook', 'missing.yaml', '--files', 'examples/**/*.ts']);
+    expect(code).toBe(2);
+    expect(io.err.join('')).toContain('missing.yaml');
+  });
+
+  it('keeps identifiers-english case-sensitive on the stems', () => {
+    const rule = baseRulebooks.flatMap(({ rulebook }) => rulebook.rules).find((entry) => entry.id === 'softtor/identifiers-english');
+    expect(rule?.check?.kind === 'regex' && rule.check.flags.includes('i')).toBe(false);
+  });
+
   it('treats --hook as a no-op in this version', () => {
     const { code, io } = run(['--hook', 'pre-tool-use']);
     expect(code).toBe(0);

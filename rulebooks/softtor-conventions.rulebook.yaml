@@ -19,13 +19,16 @@ rules:
     class: static
     severity: FAIL
     rationale: >-
-      A findMany, findFirst, update or delete without organizationId in its
-      arguments reads or writes across tenants.
-    fix: Add `organizationId` to the `where` clause of the call (or scope by the tenant field the model uses).
+      A Prisma findMany, findFirst, findUnique, update or delete inside a
+      method that never mentions organizationId reads or writes across
+      tenants. Only Prisma model calls count (this.prisma.<model>, prisma.<model>
+      or a transaction client tx.<model>); Map or Set calls are ignored.
+    fix: Scope the query by `organizationId` in the enclosing method (in the `where` clause or in the tenant field the model uses).
     source: review-subdomain I7; architecture-reviewer tenant leakage
     check:
       kind: regex
-      pattern: '\.(?:findMany|findFirst|updateMany|deleteMany|update|delete)\s*\((?![^;]*organizationId)'
+      pattern: '\b(?:this\.prisma|prisma|tx)\.\w+\.(?:findMany|findFirst|findUnique|updateMany|deleteMany|update|delete)\s*\('
+      unlessInEnclosingDeclaration: '\borganizationId\b'
     tags: [multi-tenant]
 
   - id: softtor/no-emoji
@@ -60,6 +63,5 @@ rules:
     source: Softtor conventions (identifiers in English)
     check:
       kind: regex
-      pattern: '\b(?:const|let|var|function|class|interface|type|enum)\s+\w*(?:(?:[cç][aã]o|[cç][oõ]es)(?=[A-Z_\d]|\b)|usuario|pedido|tarefa|mensagem|empresa|endereco|telefone|senha|buscar|atualizar|salvar|validar|enviar|criar|obter|cadastr)\w*'
-      flags: i
+      pattern: '\b(?:const|let|var|function|class|interface|type|enum)\s+\w*(?:(?:[cç][aã]o|[cç][oõ]es)(?=[A-Z_\d]|\b)|[Uu]suario|[Pp]edido|[Tt]arefa|[Mm]ensagem|[Ee]mpresa|[Ee]ndereco|[Tt]elefone|[Ss]enha|[Bb]uscar|[Aa]tualizar|[Ss]alvar|[Vv]alidar|[Ee]nviar|[Cc]riar|[Oo]bter|[Cc]adastr)\w*'
     tags: [style]

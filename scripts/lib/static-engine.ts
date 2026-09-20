@@ -18,6 +18,10 @@ export interface Finding {
 
 export type Executor = (rule: Rule, scopedFiles: SourceFile[], allFiles: SourceFile[]) => Finding[];
 
+export interface StaticRunOptions {
+  projectFiles?: () => SourceFile[];
+}
+
 export interface StaticRunResult {
   findings: Finding[];
   warnings: string[];
@@ -126,7 +130,7 @@ export interface ImportEntry {
 }
 
 const IMPORT_PATTERN = /\b(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?(['"])(?:\s*)\1/g;
-const REQUIRE_PATTERN = /\brequire\s*\(\s*(['"])\s*\1\s*\)/g;
+const REQUIRE_PATTERN = /\b(?:require|import)\s*\(\s*(['"])\s*\1\s*\)/g;
 
 export function extractImports(source: string): ImportEntry[] {
   const masked = maskCommentsAndStrings(source);
@@ -158,12 +162,19 @@ function finding(rule: Rule, path: string, evidence: string, line?: number): Fin
   return result;
 }
 
+function enclosingContains(content: string, index: number, pattern: string): boolean {
+  const masked = maskCommentsAndStrings(content);
+  const range = enclosingDeclaration(masked, index) ?? statementWindow(content, index);
+  return new RegExp(pattern).test(content.slice(range.start, range.end + 1));
+}
+
 function runRegex(rule: Rule, check: Extract<Check, { kind: 'regex' }>, file: SourceFile): Finding[] {
   if (check.whenPattern !== undefined && !new RegExp(check.whenPattern).test(file.content)) {
     return [];
   }
   const flags = check.flags.includes('g') ? check.flags : `${check.flags}g`;
-  const matches = [...file.content.matchAll(new RegExp(check.pattern, flags))];
+  const allMatches = [...file.content.matchAll(new RegExp(check.pattern, flags))];
+  const matches = check.unlessInEnclosingDeclaration === undefined ? allMatches : allMatches.filter((match) => !enclosingContains(file.content, match.index, check.unlessInEnclosingDeclaration ?? ''));
 
   if (check.mustMatch) {
     return matches.length === 0 ? [finding(rule, file.path, `no match for /${check.pattern}/`)] : [];
@@ -226,31 +237,72 @@ function findBlockEnd(masked: string, openIndex: number): number {
 }
 
 const MODIFIERS = '(?:(?:public|private|protected|static|async|override|readonly|export|default)\\s+)*';
+const BLOCK_KEYWORDS = '(?!(?:if|for|while|switch|catch|return|else|do|with|function)\\b)';
+const RETURN_TYPE = '(?:[^{;=\\n]|\\{[^{}\\n]*\\})*\\{';
 
-function declarationPatterns(check: Extract<Check, { kind: 'line-count' }>): RegExp[] {
-  const name = check.name ?? '[A-Za-z_$][\\w$]*';
-  if (check.selector === 'method') {
-    return [new RegExp(`^[ \\t]*${MODIFIERS}(?:async\\s+)?\\*?\\s*(?:${name})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)(?:[^{;=]|\\{[^{}]*\\})*\\{`, 'gm')];
+function declarationPatterns(selector: 'function' | 'method', name?: string): RegExp[] {
+  const identifier = name ?? `${BLOCK_KEYWORDS}[A-Za-z_$][\\w$]*`;
+  if (selector === 'method') {
+    return [new RegExp(`^[ \\t]*${MODIFIERS}(?:async\\s+)?\\*?\\s*(?:${identifier})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)${RETURN_TYPE}`, 'gm')];
   }
   return [
-    new RegExp(`^[ \\t]*${MODIFIERS}function\\s*\\*?\\s*(?:${name})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)(?:[^{;]|\\{[^{}]*\\})*\\{`, 'gm'),
+    new RegExp(`^[ \\t]*${MODIFIERS}function\\s*\\*?\\s*(?:${identifier})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)${RETURN_TYPE}`, 'gm'),
     new RegExp(
-      `^[ \\t]*${MODIFIERS}(?:const|let|var)\\s+(?:${name})\\s*(?::[^=]*)?=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*(?::[^=]*)?=>\\s*\\{`,
+      `^[ \\t]*${MODIFIERS}(?:const|let|var)\\s+(?:${identifier})\\s*(?::[^=]*)?=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*(?::[^=]*)?=>\\s*\\{`,
       'gm',
     ),
   ];
 }
 
+interface DeclarationRange {
+  start: number;
+  end: number;
+}
+
+function declarationRanges(masked: string): DeclarationRange[] {
+  const ranges: DeclarationRange[] = [];
+  const seen = new Set<number>();
+  for (const pattern of [...declarationPatterns('method'), ...declarationPatterns('function')]) {
+    for (const match of masked.matchAll(pattern)) {
+      const openIndex = match.index + match[0].length - 1;
+      if (seen.has(openIndex)) {
+        continue;
+      }
+      seen.add(openIndex);
+      ranges.push({ start: match.index, end: findBlockEnd(masked, openIndex) });
+    }
+  }
+  return ranges;
+}
+
+export function enclosingDeclaration(masked: string, index: number): DeclarationRange | null {
+  let best: DeclarationRange | null = null;
+  for (const range of declarationRanges(masked)) {
+    if (index < range.start || index > range.end) {
+      continue;
+    }
+    if (best === null || range.end - range.start < best.end - best.start) {
+      best = range;
+    }
+  }
+  return best;
+}
+
+function statementWindow(content: string, index: number): DeclarationRange {
+  const end = content.indexOf(';', index);
+  return { start: index, end: end === -1 ? content.length : end };
+}
+
 function runLineCount(rule: Rule, check: Extract<Check, { kind: 'line-count' }>, file: SourceFile): Finding[] {
   if (check.selector === 'file') {
-    const lines = file.content.split('\n').length;
+    const lines = file.content === '' ? 0 : file.content.replace(/\n$/, '').split('\n').length;
     return lines > check.max ? [finding(rule, file.path, `file spans ${lines} lines (max ${check.max})`, 1)] : [];
   }
 
   const masked = maskCommentsAndStrings(file.content);
   const findings: Finding[] = [];
   const seen = new Set<number>();
-  for (const pattern of declarationPatterns(check)) {
+  for (const pattern of declarationPatterns(check.selector, check.name)) {
     for (const match of masked.matchAll(pattern)) {
       const openIndex = match.index + match[0].length - 1;
       if (seen.has(openIndex)) {
@@ -285,10 +337,17 @@ export function runCheckOnFile(rule: Rule, check: Check, file: SourceFile): Find
   }
 }
 
-export function runStaticRules(rules: Rule[], files: SourceFile[]): StaticRunResult {
+export function runStaticRules(rules: Rule[], files: SourceFile[], options: StaticRunOptions = {}): StaticRunResult {
   const findings: Finding[] = [];
   const warnings: string[] = [];
   const applied: Record<string, string[]> = {};
+  let projectFiles: SourceFile[] | null = null;
+  const resolveProjectFiles = (): SourceFile[] => {
+    if (projectFiles === null) {
+      projectFiles = options.projectFiles ? options.projectFiles() : files;
+    }
+    return projectFiles;
+  };
 
   for (const rule of rules) {
     if (rule.class !== 'static' || !rule.check) {
@@ -308,7 +367,7 @@ export function runStaticRules(rules: Rule[], files: SourceFile[]): StaticRunRes
         warnings.push(`rule ${rule.id}: external executor '${rule.check.executorId}' is not registered; skipped`);
         continue;
       }
-      findings.push(...executor(rule, scoped, files));
+      findings.push(...executor(rule, scoped, resolveProjectFiles()));
       continue;
     }
 
