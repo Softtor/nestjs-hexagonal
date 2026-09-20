@@ -29,6 +29,7 @@ export interface CliOptions {
   env: Record<string, string | undefined>;
   pluginRoot: string;
   fetchImpl?: FetchLike;
+  fittedDir?: string;
 }
 
 interface ParsedArgs {
@@ -420,7 +421,7 @@ async function runSemantic(
     io.stderr(`${reason}\n`);
     return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, skippedReason: reason } };
   }
-  const fitted = loadFitted(join(options.pluginRoot, 'calibration', 'fitted'), pin);
+  const fitted = loadFitted(options.fittedDir ?? join(options.pluginRoot, 'calibration', 'fitted'), pin);
   const client = createJevClient({
     apiKey,
     pin,

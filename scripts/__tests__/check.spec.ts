@@ -46,14 +46,16 @@ function isJsonReport(value: unknown): value is JsonReport {
   return typeof value === 'object' && value !== null && 'findings' in value && 'skipped' in value;
 }
 
-async function run(args: string[], env: Record<string, string | undefined> = {}, cwd = PLUGIN_ROOT, fetchImpl?: FetchLike): Promise<{ code: number; io: Captured }> {
+const EMPTY_FITTED_DIR = mkdtempSync(join(tmpdir(), 'no-fitted-'));
+
+async function run(args: string[], env: Record<string, string | undefined> = {}, cwd = PLUGIN_ROOT, fetchImpl?: FetchLike, fittedDir = EMPTY_FITTED_DIR): Promise<{ code: number; io: Captured }> {
   const io = capture();
-  const code = await runCli(args, io, { cwd, env, pluginRoot: PLUGIN_ROOT, ...(fetchImpl ? { fetchImpl } : {}) });
+  const code = await runCli(args, io, { cwd, env, pluginRoot: PLUGIN_ROOT, fittedDir, ...(fetchImpl ? { fetchImpl } : {}) });
   return { code, io };
 }
 
-async function runJson(args: string[], env: Record<string, string | undefined> = {}, cwd = PLUGIN_ROOT, fetchImpl?: FetchLike): Promise<{ code: number; report: JsonReport; io: Captured }> {
-  const { code, io } = await run([...args, '--format', 'json'], env, cwd, fetchImpl);
+async function runJson(args: string[], env: Record<string, string | undefined> = {}, cwd = PLUGIN_ROOT, fetchImpl?: FetchLike, fittedDir?: string): Promise<{ code: number; report: JsonReport; io: Captured }> {
+  const { code, io } = await run([...args, '--format', 'json'], env, cwd, fetchImpl, fittedDir);
   const parsed: unknown = JSON.parse(io.out.join(''));
   if (!isJsonReport(parsed)) {
     throw new Error(`unexpected report: ${io.out.join('')}`);
@@ -415,6 +417,29 @@ describe('runCli --classes semantic', () => {
     const { code, report } = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic', '--strict'], { TYPESAFE_API_KEY: SEMANTIC_KEY }, PLUGIN_ROOT, cannedFetch(noulOrNone(0.99)));
     expect(code).toBe(0);
     expect(asSemanticReport(report).findings[0]?.decision).toBe('advise');
+  });
+});
+
+describe('runCli with fitted thresholds', () => {
+  const handler = 'examples/order-bounded-context/application/commands/cancel-order.handler.ts';
+
+  it('marks findings calibrated and applies the fitted ask cut', async () => {
+    const fittedDir = mkdtempSync(join(tmpdir(), 'fitted-'));
+    writeFileSync(join(fittedDir, 'jev-1.13.0.json'), JSON.stringify({ pin: 'jev-1.13.0', generatedAt: 'now', rules: { 'hex/handler-no-business-rules': { advise: 0.7, ask: 0.85, uncertain: { lo: 0.35, hi: 0.65 } } } }));
+    const { code, report } = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic', '--strict'], { TYPESAFE_API_KEY: SEMANTIC_KEY }, PLUGIN_ROOT, cannedFetch(noulOrNone(0.9)), fittedDir);
+    expect(code).toBe(0);
+    expect(asSemanticReport(report).findings).toEqual([expect.objectContaining({ ruleId: 'hex/handler-no-business-rules', decision: 'ask', calibrated: true })]);
+    expect(report.warnings.some((warning) => warning.includes('no fitted thresholds'))).toBe(false);
+  });
+
+  it('loads the fitted file shipped in the plugin when no override is given', async () => {
+    const io = capture();
+    const code = await runCli(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic', '--format', 'json'], io, { cwd: PLUGIN_ROOT, env: { TYPESAFE_API_KEY: SEMANTIC_KEY }, pluginRoot: PLUGIN_ROOT, fetchImpl: cannedFetch(noulOrNone(0.99)) });
+    expect(code).toBe(0);
+    const parsed: unknown = JSON.parse(io.out.join(''));
+    if (!isJsonReport(parsed)) throw new Error('unexpected report');
+    const shipped = existsSync(join(PLUGIN_ROOT, 'calibration', 'fitted', 'jev-1.13.0.json'));
+    expect(asSemanticReport(parsed).findings[0]?.calibrated).toBe(shipped);
   });
 });
 

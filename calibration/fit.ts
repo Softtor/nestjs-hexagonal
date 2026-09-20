@@ -61,7 +61,7 @@ export function renderReport(pin: string, rulebookVersion: string, generatedAt: 
   const lines: string[] = [];
   lines.push(`# Calibration report for ${pin}`);
   lines.push('');
-  lines.push(`Generated ${generatedAt} against rulebook \`hexagonal\` ${rulebookVersion}. Cuts are applied to the noul probability or to the probability mass on the violating options/levels. Intervals are 95% Wilson. \`deny\` is fitted only with at least ${DENY_MIN_SAMPLES} good and ${DENY_MIN_SAMPLES} bad cases, precision >= ${DENY_MIN_PRECISION} and zero false positives on the good cases.`);
+  lines.push(`Generated ${generatedAt} against rulebook \`hexagonal\` ${rulebookVersion}. Cuts are applied to the noul probability or to the probability mass on the violating options/levels. Intervals are 95% Wilson. \`deny\` is fitted only with at least ${DENY_MIN_SAMPLES} good and ${DENY_MIN_SAMPLES} bad cases, precision >= ${DENY_MIN_PRECISION} and zero false positives on the good cases. Every fitted cut is restricted to values at or above the rule's uncertain band \`hi\`, and ties go to the highest cut.`);
   lines.push('');
   lines.push('## Summary');
   lines.push('');
@@ -79,7 +79,7 @@ export function renderReport(pin: string, rulebookVersion: string, generatedAt: 
     lines.push('');
     lines.push(`## ${m.ruleId}`);
     lines.push('');
-    lines.push(`Primitive ${m.primitive}, ${m.nGood} good and ${m.nBad} bad cases, ${m.errors} error(s), ${m.inputTokens} input tokens, uncertain rate ${pct(m.uncertainRate)}.`);
+    lines.push(`Primitive ${m.primitive}, ${m.nGood} good and ${m.nBad} bad cases, ${m.errors} error(s), ${m.inputTokens} input tokens, uncertain rate ${pct(m.uncertainRate)}. Cuts restricted to >= hi=${fit.floor}; ties resolved towards the highest cut.`);
     if (fit.denyReason !== null) {
       lines.push('');
       lines.push(`\`deny\` omitted: ${fit.denyReason}.`);

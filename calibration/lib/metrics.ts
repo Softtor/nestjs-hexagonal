@@ -6,6 +6,7 @@ export const FIT_GRID = Array.from({ length: 10 }, (_, index) => Number((0.5 + i
 export const ASK_MIN_PRECISION = 0.85;
 export const DENY_MIN_PRECISION = 0.95;
 export const DENY_MIN_SAMPLES = 30;
+export const DEFAULT_BAND_HI = 0.65;
 
 export interface Interval {
   lo: number;
@@ -56,6 +57,7 @@ export interface FitResult {
   metrics: RuleMetrics;
   fitted: FittedThresholds;
   denyReason: string | null;
+  floor: number;
 }
 
 export function wilson(successes: number, n: number, z = 1.96): Interval {
@@ -127,6 +129,10 @@ function isUncertain(record: ResultRecord, band: UncertainBand, minConfidence: n
   return (record.confidence ?? 0) < minConfidence;
 }
 
+export function cutFloor(input: FitInput): number {
+  return input.uncertain?.hi ?? DEFAULT_BAND_HI;
+}
+
 export function computeRuleMetrics(input: FitInput): RuleMetrics {
   const usable = input.records.filter((record) => record.error === undefined);
   const primitive = usable[0]?.primitive ?? input.records[0]?.primitive ?? 'noul';
@@ -141,27 +147,42 @@ export function computeRuleMetrics(input: FitInput): RuleMetrics {
     nBad: usable.filter((record) => record.expected === 'violation').length,
     errors: input.records.length - usable.length,
     models: [...new Set(input.records.map((record) => record.model))].sort(),
-    cuts: [...new Set([...REPORT_CUTS, ...FIT_GRID])].sort((a, b) => a - b).map((cut) => metricsAtCut(usable, cut)),
+    cuts: [...new Set([...REPORT_CUTS, ...FIT_GRID, cutFloor(input)])].sort((a, b) => a - b).map((cut) => metricsAtCut(usable, cut)),
     uncertainRate: usable.length === 0 ? 0 : uncertain / usable.length,
     latency: { p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95) },
     inputTokens: usable.reduce((sum, record) => sum + record.inputTokens, 0),
   };
 }
 
+function sameOutcome(a: CutMetrics, b: CutMetrics): boolean {
+  return a.tp === b.tp && a.fp === b.fp;
+}
+
+function highestOfPlateau(candidates: CutMetrics[], start: CutMetrics): CutMetrics {
+  let chosen = start;
+  for (const entry of candidates) {
+    if (entry.cut > chosen.cut && sameOutcome(entry, start)) {
+      chosen = entry;
+    }
+  }
+  return chosen;
+}
+
 export function fitRule(input: FitInput): FitResult {
   const metrics = computeRuleMetrics(input);
-  const grid = metrics.cuts.filter((entry) => FIT_GRID.includes(entry.cut));
+  const floor = cutFloor(input);
+  const grid = metrics.cuts.filter((entry) => entry.cut >= floor && (FIT_GRID.includes(entry.cut) || entry.cut === floor));
   const fitted: FittedThresholds = {};
   const usable = grid.filter((entry) => entry.tp > 0);
 
-  const best = usable.reduce<CutMetrics | null>((current, entry) => (current === null || entry.f1 > current.f1 ? entry : current), null);
+  const best = usable.reduce<CutMetrics | null>((current, entry) => (current === null || entry.f1 >= current.f1 ? entry : current), null);
   if (best) {
     fitted.advise = best.cut;
   }
-  const askFloor = fitted.advise ?? 0;
-  const ask = usable.find((entry) => entry.cut >= askFloor && entry.precision >= ASK_MIN_PRECISION);
-  if (ask) {
-    fitted.ask = ask.cut;
+  const askFloor = fitted.advise ?? floor;
+  const firstAsk = usable.find((entry) => entry.cut >= askFloor && entry.precision >= ASK_MIN_PRECISION);
+  if (firstAsk) {
+    fitted.ask = highestOfPlateau(usable, firstAsk).cut;
   }
 
   let denyReason: string | null = null;
@@ -169,9 +190,9 @@ export function fitRule(input: FitInput): FitResult {
     denyReason = `needs at least ${DENY_MIN_SAMPLES} good and ${DENY_MIN_SAMPLES} bad cases (have ${metrics.nGood}/${metrics.nBad})`;
   } else {
     const denyFloor = fitted.ask ?? askFloor;
-    const deny = usable.find((entry) => entry.cut >= denyFloor && entry.precision >= DENY_MIN_PRECISION && entry.fp === 0);
-    if (deny) {
-      fitted.deny = deny.cut;
+    const firstDeny = usable.find((entry) => entry.cut >= denyFloor && entry.precision >= DENY_MIN_PRECISION && entry.fp === 0);
+    if (firstDeny) {
+      fitted.deny = highestOfPlateau(usable, firstDeny).cut;
     } else {
       denyReason = `no cut reaches precision ${DENY_MIN_PRECISION} with zero false positives`;
     }
@@ -182,5 +203,5 @@ export function fitRule(input: FitInput): FitResult {
   } else {
     fitted.minConfidence = input.minConfidence ?? 0.6;
   }
-  return { metrics, fitted, denyReason };
+  return { metrics, fitted, denyReason, floor };
 }
