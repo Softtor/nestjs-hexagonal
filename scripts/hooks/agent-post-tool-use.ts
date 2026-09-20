@@ -29,14 +29,17 @@ export const handler: HookHandler = async (input, context) => {
     return skip();
   }
   const fails = session.unresolved.filter((finding) => finding.severity === 'FAIL');
-  if (fails.length === 0) {
+  if (fails.length === 0 && session.advisory.length === 0) {
     return { output: null, decision: 'silent' };
   }
-  const text = [
-    `${PREFIX} ${session.agentType} finished with ${fails.length} unresolved static FAIL finding(s); they need a fix before this work is complete:`,
-    ...fails.map(formatStaticFinding),
-  ].join('\n');
-  return { output: contextOutput('PostToolUse', text), decision: 'context', ruleIds: uniqueRuleIds(fails) };
+  const lines: string[] = [];
+  if (fails.length > 0) {
+    lines.push(`${PREFIX} ${session.agentType} finished with ${fails.length} unresolved static FAIL finding(s); they need a fix before this work is complete:`, ...fails.map(formatStaticFinding));
+  }
+  if (session.advisory.length > 0) {
+    lines.push(`${PREFIX} semantic advisory on the files ${session.agentType} touched (not blocking):`, ...session.advisory);
+  }
+  return { output: contextOutput('PostToolUse', lines.join('\n')), decision: 'context', ruleIds: uniqueRuleIds(fails) };
 };
 
 await runHookMain('agent-post-tool-use', handler, import.meta.url);

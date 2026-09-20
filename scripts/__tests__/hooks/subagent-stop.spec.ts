@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { emptySession } from '../../lib/session-store.ts';
 import { findAgentSession, handler as agentPostToolUse } from '../../hooks/agent-post-tool-use.ts';
 import { handler, MAX_BLOCKS, touchedFiles } from '../../hooks/subagent-stop.ts';
+import { handler as subagentStart } from '../../hooks/subagent-start.ts';
+import type { FetchLike } from '../../lib/jev-client.ts';
 import { APPLICATION_AGENT, context, DOMAIN_AGENT, jevFetch, makeProject, NEST_SERVICE, PLAIN_SERVICE, readLog, runHook, writeProjectFile, type Project } from './helpers.ts';
 
 interface BlockJson {
@@ -50,6 +52,7 @@ describe('subagent-stop hook', () => {
     writeProjectFile(project, 'src/from-store.ts', 'export const c = 1;\n');
     const session = { ...emptySession(DOMAIN_AGENT, 'now', head), touchedPaths: ['src/from-store.ts', 'src/deleted.ts'] };
     expect(touchedFiles(session, project.dir)).toEqual(['src/before.ts', 'src/from-store.ts', 'src/untracked.ts']);
+    expect(touchedFiles({ ...session, baseline: ['src/before.ts', 'src/untracked.ts'] }, project.dir)).toEqual(['src/from-store.ts']);
     expect(touchedFiles({ ...emptySession(DOMAIN_AGENT, 'now', null), touchedPaths: ['src/from-store.ts'] }, project.dir)).toEqual(['src/from-store.ts']);
     const noGit = makeProject();
     writeProjectFile(noGit, 'src/only-store.ts', 'export const d = 1;\n');
@@ -99,6 +102,24 @@ describe('subagent-stop hook', () => {
     expect(readLog(project).map((entry) => entry.decision)).toEqual(['block', 'block', 'release']);
   });
 
+  it('does not block on a file that was already dirty before the agent started', async () => {
+    const project = makeProject({ git: true });
+    writeProjectFile(project, 'src/other/domain/other.service.ts', NEST_SERVICE);
+    const start = { hook_event_name: 'SubagentStart', session_id: 's', agent_id: 'agent-1', agent_type: DOMAIN_AGENT, cwd: project.dir };
+    await runHook('subagent-start', subagentStart, start, context(project));
+    expect(project.store.read('s', 'agent-1')?.baseline).toContain('src/other/domain/other.service.ts');
+    writeProjectFile(project, BAD_PATH, PLAIN_SERVICE);
+    project.store.update('s', 'agent-1', (session) => ({ ...session, touchedPaths: [BAD_PATH] }));
+    const run = await runHook('subagent-stop', handler, stopInput(project), context(project));
+    expect(run.stdout).toBe('');
+    expect(project.store.read('s', 'agent-1')?.blocks).toBe(0);
+
+    writeProjectFile(project, 'src/other/domain/other.service.ts', `${NEST_SERVICE}// touched by the agent\n`);
+    project.store.update('s', 'agent-1', (session) => ({ ...session, touchedPaths: [BAD_PATH, 'src/other/domain/other.service.ts'] }));
+    const touched = await runHook('subagent-stop', handler, stopInput(project), context(project));
+    expect(touched.stdout).toContain('"decision":"block"');
+  });
+
   it('lists only files the agent touched, even when another file in the project also fails', async () => {
     const project = makeProject();
     writeProjectFile(project, 'src/other/domain/other.service.ts', NEST_SERVICE);
@@ -112,27 +133,47 @@ describe('subagent-stop hook', () => {
     expect(run.json.reason).not.toContain('other.service.ts');
   });
 
-  it('appends semantic advisory lines to the reason when a key is present, never blocking on them', async () => {
+  it('blocks on a static FAIL without calling Jev, and keeps the semantic advisory for clean stops only', async () => {
     const project = makeProject();
     const handlerPath = 'src/orders/application/create-order.handler.ts';
     writeProjectFile(project, handlerPath, 'export class CreateOrderHandler {\n  async execute(): Promise<void> {\n    await Promise.resolve();\n  }\n}\n');
-    startSession(project, 'agent-2', APPLICATION_AGENT, null, [handlerPath]);
-    const advise = jevFetch(0.9);
-    const clean = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), context(project, { TYPESAFE_API_KEY: 'sk-env' }, advise.fetchImpl));
-    expect(clean.stdout).toBe('');
-    expect(advise.calls).toEqual([]);
-
     writeProjectFile(project, BAD_PATH, NEST_SERVICE);
     startSession(project, 'agent-2', APPLICATION_AGENT, null, [handlerPath, BAD_PATH]);
+    const advise = jevFetch(0.9);
     const blocking = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), context(project, { TYPESAFE_API_KEY: 'sk-env' }, advise.fetchImpl));
     if (!isBlockJson(blocking.json)) {
       throw new Error(`unexpected output ${blocking.stdout}`);
     }
+    expect(advise.calls).toEqual([]);
+    expect(blocking.json.reason).not.toContain('semantic');
+    expect(readLog(project).at(-1)?.semantic).toBeUndefined();
+
+    writeProjectFile(project, BAD_PATH, PLAIN_SERVICE);
+    const clean = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), context(project, { TYPESAFE_API_KEY: 'sk-env' }, advise.fetchImpl));
+    expect(clean.stdout).toBe('');
     expect(advise.calls.length).toBeGreaterThan(0);
-    expect(blocking.json.reason).toContain('advisory (semantic, not blocking)');
-    expect(blocking.json.reason).toContain('semantic ask hex/handler-no-business-rules');
-    expect(blocking.json.reason).not.toContain('sk-env');
+    const session = project.store.read('s', 'agent-2');
+    expect(session?.unresolved).toEqual([]);
+    expect(session?.advisory.join('\n')).toContain('semantic ask hex/handler-no-business-rules');
+    expect(session?.advisory.join('\n')).not.toContain('sk-env');
     expect(readLog(project).at(-1)?.semantic).toMatchObject({ findings: 1 });
+  });
+
+  it('gives up on the semantic advisory at the deadline instead of outliving the hook timeout', async () => {
+    const project = makeProject();
+    const handlerPath = 'src/orders/application/create-order.handler.ts';
+    writeProjectFile(project, handlerPath, 'export class CreateOrderHandler {\n  async execute(): Promise<void> {\n    await Promise.resolve();\n  }\n}\n');
+    startSession(project, 'agent-2', APPLICATION_AGENT, null, [handlerPath]);
+    const hanging: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+    const started = Date.now();
+    const run = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), { ...context(project, { TYPESAFE_API_KEY: 'sk-env' }, hanging), semanticDeadlineMs: 300 });
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(run.stdout).toBe('');
+    expect(readLog(project).at(-1)?.semantic).toMatchObject({ findings: 0 });
+    expect(project.store.read('s', 'agent-2')?.advisory).toEqual([]);
   });
 });
 
@@ -162,6 +203,10 @@ describe('agent-post-tool-use hook', () => {
     expect(completed.stdout).toContain('"hookEventName":"PostToolUse"');
     expect(completed.stdout).toContain('1 unresolved static FAIL finding(s)');
     expect(completed.stdout).toContain('hex/domain-no-nest-decorators (FAIL)');
+    project.store.update('s', 'agent-1', (session) => ({ ...session, advisory: ['[nestjs-hexagonal] semantic ask hex/x src/x.ts:1: e - fix: f'] }));
+    const withAdvisory = await runHook('agent-post-tool-use', agentPostToolUse, agentInput(project, { status: 'completed', agentId: 'agent-1', content: [] }), context(project));
+    expect(withAdvisory.stdout).toContain('semantic ask hex/x');
+    project.store.update('s', 'agent-1', (session) => ({ ...session, advisory: [] }));
 
     const launched = await runHook('agent-post-tool-use', agentPostToolUse, agentInput(project, { status: 'async_launched', agentId: 'agent-1' }), context(project));
     expect(launched.stdout).toBe('');
@@ -176,6 +221,6 @@ describe('agent-post-tool-use hook', () => {
     project.store.update('s', 'agent-1', (session) => ({ ...session, unresolved: [] }));
     const resolved = await runHook('agent-post-tool-use', agentPostToolUse, agentInput(project, { status: 'completed', agentId: 'agent-1' }), context(project));
     expect(resolved.stdout).toBe('');
-    expect(readLog(project).map((entry) => entry.decision)).toEqual(['release', 'context', 'skip', 'skip', 'skip', 'silent']);
+    expect(readLog(project).map((entry) => entry.decision)).toEqual(['release', 'context', 'context', 'skip', 'skip', 'skip', 'silent']);
   });
 });

@@ -356,6 +356,16 @@ describe('runCli --classes semantic', () => {
     assertNetworkForbidden();
   });
 
+  it('reads the plugin option before the environment key and treats an empty key as absent', async () => {
+    const calls: string[] = [];
+    const { code, io } = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic'], { CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY: 'sk-from-option', TYPESAFE_API_KEY: '' }, PLUGIN_ROOT, cannedFetch(noulOrNone(0.1), calls));
+    expect(code).toBe(0);
+    expect(io.err.join('')).not.toContain('TYPESAFE_API_KEY is not set');
+    expect(calls.length).toBeGreaterThan(0);
+    const empty = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic'], { CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY: '', TYPESAFE_API_KEY: '' });
+    expect(empty.io.err.join('')).toContain('TYPESAFE_API_KEY is not set');
+  });
+
   it('does nothing when NESTJS_HEXAGONAL_DISABLE=1', async () => {
     const { code, io } = await run(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'static,semantic'], { NESTJS_HEXAGONAL_DISABLE: '1', TYPESAFE_API_KEY: SEMANTIC_KEY });
     expect(code).toBe(0);

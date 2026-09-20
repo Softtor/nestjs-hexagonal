@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { apiKey } from '../../lib/api-key.ts';
 import { RulebookCompositionError, semanticRulebookVersion, type ComposedRulebook } from '../../lib/compose.ts';
 import { loadFitted, type FittedFile } from '../../lib/decide.ts';
 import type { HookDecision, HookLogEntry } from '../../lib/hook-log.ts';
@@ -21,7 +22,11 @@ export interface HookContext {
   fetchImpl?: FetchLike;
   now?: () => number;
   store?: SessionStore;
+  /** Overrides the semantic deadline derived from the hook timeout (tests). */
+  semanticDeadlineMs?: number;
 }
+
+export { apiKey };
 
 export interface SemanticStats {
   requests: number;
@@ -97,15 +102,6 @@ export function rulesInScope(rules: Rule[], path: string): Rule[] {
   return rules.filter((rule) => isInScope(rule.scope, path));
 }
 
-export function apiKey(env: Record<string, string | undefined>): string | undefined {
-  const fromOption = env.CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY;
-  if (fromOption !== undefined && fromOption !== '') {
-    return fromOption;
-  }
-  const fromEnv = env.TYPESAFE_API_KEY;
-  return fromEnv !== undefined && fromEnv !== '' ? fromEnv : undefined;
-}
-
 function location(finding: { path: string; line?: number }): string {
   return finding.line === undefined ? finding.path : `${finding.path}:${finding.line}`;
 }
@@ -138,39 +134,72 @@ export interface SemanticAdvisory {
 }
 
 export const SEMANTIC_TIMEOUT_MS = 6_000;
+const DEADLINE_GRACE_MS = 500;
+
+export interface SemanticAdvisoryOptions {
+  concurrency: number;
+  /** Total wall-clock budget; every in-flight request is aborted when it elapses. */
+  deadlineMs: number;
+}
+
+/** Wraps fetch so one shared controller can abort every request at the deadline. */
+function fetchWithDeadline(base: FetchLike, controller: AbortController): FetchLike {
+  return (url, init) => {
+    const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
+    return base(url, { ...init, signal });
+  };
+}
+
+function undecidedAdvisory(rules: Rule[], files: SourceFile[], stats: SemanticStats): SemanticAdvisory {
+  const undecided = files.reduce((sum, file) => sum + rulesInScope(rules, file.path).length, 0);
+  return { lines: [], stats: { ...stats, undecided }, findings: [] };
+}
 
 /**
  * Semantic rules as advisory text. Never denies or blocks in this version:
  * advise/ask findings become lines, uncertain/uncalibrated ones a single
- * short line, and any client error is swallowed into the stats.
+ * short line, and any client error or the deadline is swallowed into the stats.
  */
 export async function semanticAdvisory(
   composed: ComposedRulebook,
   files: SourceFile[],
   key: string,
   context: HookContext,
-  concurrency: number,
+  options: SemanticAdvisoryOptions,
 ): Promise<SemanticAdvisory> {
   const rules = composed.rules.filter((rule) => rule.class === 'semantic');
   const stats: SemanticStats = { requests: 0, answered: 0, findings: 0, uncertain: 0, uncalibrated: 0, undecided: 0 };
   if (rules.length === 0 || files.length === 0) {
     return { lines: [], stats, findings: [] };
   }
+  const deadlineMs = context.semanticDeadlineMs ?? options.deadlineMs;
   const pin = composed.rulebook.model.pin;
   const loaded = loadFitted(join(context.pluginRoot, 'calibration', 'fitted'), pin, semanticRulebookVersion(composed));
   const fitted: FittedFile | null = loaded.status === 'none' ? null : loaded.fitted;
   const dataDir = resolveDataDir(context.env);
+  const controller = new AbortController();
   const client = createJevClient({
     apiKey: key,
     pin,
     rulebookVersion: composed.rulebook.version,
-    timeoutMs: SEMANTIC_TIMEOUT_MS,
+    timeoutMs: Math.min(SEMANTIC_TIMEOUT_MS, deadlineMs),
     cacheDir: join(dataDir, 'cache'),
     logPath: join(dataDir, 'jev.jsonl'),
     breakerPath: join(dataDir, 'breaker.json'),
-    ...(context.fetchImpl ? { fetchImpl: context.fetchImpl } : {}),
+    fetchImpl: fetchWithDeadline(context.fetchImpl ?? ((url, init) => globalThis.fetch(url, init)), controller),
   });
-  const result = await runSemanticRules(rules, files, { client, fitted, uncalibrated: composed.uncalibrated || loaded.status === 'mismatch', concurrency });
+  const abortTimer = setTimeout(() => controller.abort(), deadlineMs);
+  let graceTimer: ReturnType<typeof setTimeout> | undefined;
+  const gaveUp = new Promise<null>((resolve) => {
+    graceTimer = setTimeout(() => resolve(null), deadlineMs + DEADLINE_GRACE_MS);
+  });
+  const run = runSemanticRules(rules, files, { client, fitted, uncalibrated: composed.uncalibrated || loaded.status === 'mismatch', concurrency: options.concurrency });
+  const result = await Promise.race([run, gaveUp]);
+  clearTimeout(abortTimer);
+  clearTimeout(graceTimer);
+  if (result === null) {
+    return undecidedAdvisory(rules, files, stats);
+  }
   const applied = Object.values(result.applied).reduce((sum, ids) => sum + ids.length, 0);
   const undecided = result.undecided.reduce((sum, entry) => sum + entry.ruleIds.length, 0);
   stats.requests = result.requests;

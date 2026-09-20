@@ -16,10 +16,14 @@ export const AgentSessionSchema = z.object({
   agentType: z.string(),
   startedAt: z.string(),
   headSha: z.string().nullable(),
+  /** Files already modified or untracked when the agent started; never attributed to it. */
+  baseline: z.array(z.string()).default([]),
   touchedPaths: z.array(z.string()),
   blocks: z.number().int().nonnegative(),
   advisoryBytes: z.number().int().nonnegative(),
   unresolved: z.array(UnresolvedFindingSchema),
+  /** Semantic advisory lines of the last clean stop, handed to the parent by the Agent hook. */
+  advisory: z.array(z.string()).default([]),
 });
 
 export type AgentSession = z.infer<typeof AgentSessionSchema>;
@@ -48,7 +52,7 @@ export interface SessionStore {
 }
 
 export function emptySession(agentType: string, startedAt: string, headSha: string | null): AgentSession {
-  return { agentType, startedAt, headSha, touchedPaths: [], blocks: 0, advisoryBytes: 0, unresolved: [] };
+  return { agentType, startedAt, headSha, baseline: [], touchedPaths: [], blocks: 0, advisoryBytes: 0, unresolved: [], advisory: [] };
 }
 
 /** Data directory id of a marketplace install: `<plugin>@<marketplace>` with `@` replaced by `-` (plugins-reference.md, "Persistent data directory"). */

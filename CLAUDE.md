@@ -25,10 +25,10 @@ Compatible with GSD workflow.
 | Hook | Matcher | Gate | Effect (v1) |
 |---|---|---|---|
 | `SubagentStart` | `^nestjs-hexagonal:.*` | opt-in project, plugin agent | rulebook slice of the agent's layer as `additionalContext` (<= 1,500 tokens); records HEAD sha and start time |
-| `PreToolUse` | `Write\|Edit` | plugin agent, path in project and in a static scope | static FAIL -> `permissionDecision: deny` (3 findings max); WARN -> `additionalContext`, no permission decision; no network, no `external` checks |
+| `PreToolUse` | `Write\|Edit` | plugin agent, path in project and in a static scope | only findings the current file does not already have: new static FAIL -> `permissionDecision: deny` (3 findings max); new WARN -> `additionalContext`, no permission decision; no network, no `external` checks |
 | `PostToolUse` | `Write\|Edit` | any agent (path recorded per `agent_id`) | static for all; semantic only for plugin agent with key; `additionalContext` only with findings, 8 KB cap per agent and session |
-| `SubagentStop` | the six pipeline agents | plugin agent | files = store paths + `git diff`/untracked since start; static FAIL -> `decision: block` listing only touched files (semantic lines advisory); after 2 blocks -> release with `systemMessage` |
-| `PostToolUse` | `Agent` | completed plugin subagent | unresolved FAILs of that `agentId` from the store as `additionalContext` |
+| `SubagentStop` | the six pipeline agents | plugin agent | files = store paths + (`git diff`/untracked since start minus the baseline recorded at start); static FAIL -> `decision: block` at once, no Jev; clean stop -> semantic advisory under a 17 s deadline stored for the Agent hook; after 2 blocks -> release with `systemMessage` |
+| `PostToolUse` | `Agent` | completed plugin subagent | unresolved FAILs and the last semantic advisory of that `agentId` from the store as `additionalContext` |
 
 Every hook runs through `scripts/run.sh --hook <name>`, exits 0 whatever happens, never prints the key or a raw file body, and appends one line to `$CLAUDE_PLUGIN_DATA/logs/hooks-YYYYMMDD.jsonl` (`check.ts export-logs --since <date>` aggregates it). The key comes from `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY` (plugin `userConfig`) or `TYPESAFE_API_KEY`; the plugin ships `defaultEnabled: false`.
 

@@ -44,6 +44,8 @@ describe('subagent-start hook', () => {
     expect(Math.ceil(slice.text.length / 4)).toBeLessThanOrEqual(CONTEXT_TOKEN_BUDGET);
     expect(slice.text).toContain('more rule(s) omitted');
     expect(slice.ruleIds.length).toBeLessThan(80);
+    expect(slice.ruleIds.every((id) => slice.text.includes(`- ${id} (`))).toBe(true);
+    expect(slice.ruleIds).toEqual(many.filter((entry) => slice.text.includes(`- ${entry.id} (`)).map((entry) => entry.id));
   });
 
   it('stays silent for agents outside the plugin and for projects without a rulebook', async () => {
@@ -73,13 +75,13 @@ describe('subagent-start hook', () => {
     expect(entry).toMatchObject({ hook: 'subagent-start', event: 'SubagentStart', agentType: DOMAIN_AGENT, decision: 'context' });
   });
 
-  it('keeps the counters of a running agent when the event fires again on resume', async () => {
+  it('keeps the touched paths but resets the block counter when the event fires again on resume', async () => {
     const project = makeProject();
     const input = { hook_event_name: 'SubagentStart', session_id: 's', agent_id: 'agent-1', agent_type: DOMAIN_AGENT, cwd: project.dir };
     await runHook('subagent-start', handler, input, context(project));
     project.store.update('s', 'agent-1', (session) => ({ ...session, blocks: 2, touchedPaths: ['src/a.ts'] }));
     await runHook('subagent-start', handler, input, context(project));
-    expect(project.store.read('s', 'agent-1')).toMatchObject({ blocks: 2, touchedPaths: ['src/a.ts'] });
+    expect(project.store.read('s', 'agent-1')).toMatchObject({ blocks: 0, touchedPaths: ['src/a.ts'] });
     await runHook('subagent-start', handler, { ...input, agent_type: 'nestjs-hexagonal:application-agent' }, context(project));
     expect(project.store.read('s', 'agent-1')).toMatchObject({ blocks: 0, touchedPaths: [], agentType: 'nestjs-hexagonal:application-agent' });
   });

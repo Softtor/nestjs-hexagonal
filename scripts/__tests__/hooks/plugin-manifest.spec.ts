@@ -3,6 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { POST_TOOL_USE_TIMEOUT_S } from '../../hooks/post-tool-use.ts';
+import { SUBAGENT_STOP_TIMEOUT_S } from '../../hooks/subagent-stop.ts';
 import { PLUGIN_ROOT } from './helpers.ts';
 
 const HandlerSchema = z.object({
@@ -17,7 +19,7 @@ const HooksJsonSchema = z.object({
   hooks: z.record(z.enum(['SubagentStart', 'PreToolUse', 'PostToolUse', 'SubagentStop']), z.array(z.object({ matcher: z.string(), hooks: z.array(HandlerSchema).min(1) }))),
 });
 
-describe('hooks/hooks.json', () => {
+describe('plugin manifest and hooks.json', () => {
   const parsed = HooksJsonSchema.parse(JSON.parse(readFileSync(join(PLUGIN_ROOT, 'hooks', 'hooks.json'), 'utf8')));
 
   it('routes every handler through run.sh with a known hook name and a timeout in seconds', () => {
@@ -43,6 +45,11 @@ describe('hooks/hooks.json', () => {
     expect(parsed.hooks.PostToolUse?.map((group) => group.matcher)).toEqual(['Write|Edit', 'Agent']);
   });
 
+  it('declares the timeouts the semantic deadlines are derived from', () => {
+    expect(parsed.hooks.PostToolUse?.[0]?.hooks[0]?.timeout).toBe(POST_TOOL_USE_TIMEOUT_S);
+    expect(parsed.hooks.SubagentStop?.[0]?.hooks[0]?.timeout).toBe(SUBAGENT_STOP_TIMEOUT_S);
+  });
+
   it('is shipped by the package', () => {
     const pkg: unknown = JSON.parse(readFileSync(join(PLUGIN_ROOT, 'package.json'), 'utf8'));
     const files = typeof pkg === 'object' && pkg !== null && 'files' in pkg && Array.isArray(pkg.files) ? pkg.files : [];
@@ -50,9 +57,13 @@ describe('hooks/hooks.json', () => {
     expect(files).toContain('scripts/hooks');
   });
 
-  it('declares the key as optional sensitive user config and installs disabled', () => {
+  it('declares the key as optional sensitive user config', () => {
     const plugin: unknown = JSON.parse(readFileSync(join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
-    const shape = z.object({ defaultEnabled: z.literal(false), userConfig: z.object({ TYPESAFE_API_KEY: z.object({ type: z.literal('string'), sensitive: z.literal(true), required: z.literal(false), title: z.string(), description: z.string() }) }) });
+    const shape = z.object({ userConfig: z.object({ TYPESAFE_API_KEY: z.object({ type: z.literal('string'), sensitive: z.literal(true), required: z.literal(false), title: z.string(), description: z.string() }) }) });
     expect(shape.safeParse(plugin).success).toBe(true);
+  });
+
+  it('subscribes only to the four events the README documents', () => {
+    expect(Object.keys(parsed.hooks).sort()).toEqual(['PostToolUse', 'PreToolUse', 'SubagentStart', 'SubagentStop']);
   });
 });

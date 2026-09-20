@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import type { Rule } from '../lib/rulebook.schema.ts';
 import { runStaticRules, type Finding } from '../lib/static-engine.ts';
 import {
   PREFIX,
@@ -38,6 +39,20 @@ export function resultingContent(tool: FileToolInput, absolutePath: string): str
   return `${current.slice(0, index)}${newString}${current.slice(index + oldString.length)}`;
 }
 
+function findingKey(finding: Finding): string {
+  return `${finding.ruleId}\u0000${finding.evidence}`;
+}
+
+/** Findings of the resulting content that the current file does not already have. */
+export function regressions(rules: Rule[], path: string, current: string | null, next: string): Finding[] {
+  const after = runStaticRules(rules, [{ path, content: next }]).findings;
+  if (current === null) {
+    return after;
+  }
+  const before = new Set(runStaticRules(rules, [{ path, content: current }]).findings.map(findingKey));
+  return after.filter((finding) => !before.has(findingKey(finding)));
+}
+
 export function denyReason(fails: Finding[]): string {
   const shown = fails.slice(0, DENY_REASON_MAX_FINDINGS).map(formatStaticFinding);
   const more = fails.length > DENY_REASON_MAX_FINDINGS ? [`${PREFIX} ${fails.length - DENY_REASON_MAX_FINDINGS} more FAIL finding(s) in the same file`] : [];
@@ -69,8 +84,9 @@ export const handler: HookHandler = async (input, context) => {
   if (content === null) {
     return { ...skip(), path };
   }
-  const bodies = [content, tool.tool === 'Write' ? tool.input.content : tool.input.new_string];
-  const { findings } = runStaticRules(rules, [{ path, content }]);
+  const current = existsSync(tool.input.file_path) ? readFileSync(tool.input.file_path, 'utf8') : null;
+  const bodies = [content, ...(current === null ? [] : [current]), tool.tool === 'Write' ? tool.input.content : tool.input.new_string];
+  const findings = regressions(rules, path, current, content);
   const fails = findings.filter((finding) => finding.severity === 'FAIL');
   if (fails.length > 0) {
     return { output: denyOutput(denyReason(fails)), decision: 'deny', ruleIds: uniqueRuleIds(fails), path, bodies };

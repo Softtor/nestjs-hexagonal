@@ -93,7 +93,31 @@ describe('pre-tool-use hook', () => {
     expect(readLog(project).map((entry) => entry.decision)).toEqual(['silent']);
 
     const stillBroken = await runHook('pre-tool-use', handler, { ...input, tool_input: { file_path: path, old_string: 'run(): void {}', new_string: 'run(): void { return; }' } }, context(project));
-    expect(stillBroken.stdout).toContain('"permissionDecision":"deny"');
+    expect(stillBroken.stdout).toBe('');
+    expect(readLog(project).map((entry) => entry.decision)).toEqual(['silent', 'silent']);
+  });
+
+  it('denies only the FAILs a write introduces, not the ones the file already has', async () => {
+    const project = makeProject();
+    const path = writeProjectFile(project, 'src/orders/domain/order.service.ts', NEST_SERVICE);
+    const input = {
+      hook_event_name: 'PreToolUse',
+      session_id: 's',
+      cwd: project.dir,
+      agent_id: 'a',
+      agent_type: DOMAIN_AGENT,
+      tool_name: 'Edit',
+      tool_input: { file_path: path, old_string: 'export class OrderService {', new_string: "import { PrismaService } from '../infrastructure/prisma.service';\nexport class OrderService {" },
+    };
+    const run = await runHook('pre-tool-use', handler, input, context(project));
+    if (!isPreToolUseJson(run.json)) {
+      throw new Error(`unexpected output ${run.stdout}`);
+    }
+    expect(run.json.hookSpecificOutput.permissionDecision).toBe('deny');
+    const reason = run.json.hookSpecificOutput.permissionDecisionReason ?? '';
+    expect(reason).toContain('introduce 1 static FAIL');
+    expect(reason).toContain('prisma.service');
+    expect(reason).not.toContain("'@nestjs/common'");
   });
 
   it('returns a WARN as additionalContext without a permission decision', async () => {

@@ -25,6 +25,9 @@ import { runHookMain } from './lib/runner.ts';
 /** Advisory bytes one agent receives per session before the hook falls back to a one-line notice. */
 export const ADVISORY_BYTE_CAP = 8 * 1024;
 export const MAIN_THREAD_AGENT_ID = 'main';
+/** Must match hooks/hooks.json; the semantic deadline leaves 2 s for the static run and the output. */
+export const POST_TOOL_USE_TIMEOUT_S = 15;
+const SEMANTIC_DEADLINE_MS = (POST_TOOL_USE_TIMEOUT_S - 2) * 1000;
 const SEMANTIC_CONCURRENCY = 4;
 
 export const handler: HookHandler = async (input, context) => {
@@ -68,7 +71,7 @@ export const handler: HookHandler = async (input, context) => {
   const lines = staticResult.findings.map(formatStaticFinding);
   const result: HookResult = { output: null, decision: 'silent', path, bodies, ruleIds: uniqueRuleIds(staticResult.findings) };
   if (key !== undefined && inScopeSemantic.length > 0) {
-    const advisory = await semanticAdvisory(composed, [file], key, context, SEMANTIC_CONCURRENCY);
+    const advisory = await semanticAdvisory(composed, [file], key, context, { concurrency: SEMANTIC_CONCURRENCY, deadlineMs: SEMANTIC_DEADLINE_MS });
     lines.push(...advisory.lines);
     result.semantic = advisory.stats;
     result.ruleIds = uniqueRuleIds([...staticResult.findings, ...advisory.findings]);

@@ -1,6 +1,7 @@
 import '../helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
+import type { FetchLike } from '../../lib/jev-client.ts';
 import { ADVISORY_BYTE_CAP, handler, MAIN_THREAD_AGENT_ID } from '../../hooks/post-tool-use.ts';
 import { APPLICATION_AGENT, context, DOMAIN_AGENT, jevFetch, makeProject, NEST_SERVICE, PLAIN_SERVICE, readLog, runHook, writeProjectFile } from './helpers.ts';
 
@@ -120,6 +121,21 @@ describe('post-tool-use hook', () => {
     expect(run.code).toBe(0);
     expect(run.stdout).toBe('');
     expect(readLog(project)[0]?.semantic).toMatchObject({ undecided: 2, findings: 0 });
+  });
+
+  it('gives up on Jev at the deadline and stays silent', async () => {
+    const project = makeProject();
+    writeProjectFile(project, HANDLER_PATH, HANDLER_SOURCE);
+    const hanging: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+    const started = Date.now();
+    const run = await runHook('post-tool-use', handler, postInput(project, HANDLER_PATH, HANDLER_SOURCE, { id: 'a', type: APPLICATION_AGENT }), { ...context(project, { TYPESAFE_API_KEY: 'sk-env' }, hanging), semanticDeadlineMs: 300 });
+    expect(Date.now() - started).toBeLessThan(3_000);
+    expect(run.code).toBe(0);
+    expect(run.stdout).toBe('');
+    expect(readLog(project)[0]?.semantic).toMatchObject({ findings: 0 });
   });
 
   it('emits only a one-line notice once the advisory cap of the agent is reached', async () => {

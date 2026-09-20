@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { apiKey as resolveApiKey } from './lib/api-key.ts';
 import { RulebookCompositionError, semanticRulebookVersion, type ComposedRulebook } from './lib/compose.ts';
 import { FittedFileError, loadFitted, type FittedFile } from './lib/decide.ts';
 import { readHookLogs, summarizeHookLogs } from './lib/hook-log.ts';
@@ -338,8 +339,8 @@ async function runSemantic(
   if (rules.length === 0) {
     return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, undecided: [] } };
   }
-  const apiKey = options.env.TYPESAFE_API_KEY ?? options.env.CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY;
-  if (apiKey === undefined || apiKey === '') {
+  const apiKey = resolveApiKey(options.env);
+  if (apiKey === undefined) {
     const reason = `TYPESAFE_API_KEY is not set; skipped ${rules.length} semantic rule(s)`;
     io.stderr(`${reason}\n`);
     return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, undecided: [], skippedReason: reason } };

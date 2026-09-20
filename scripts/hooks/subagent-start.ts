@@ -1,6 +1,6 @@
-import { gitHead } from '../lib/project-files.ts';
+import { changedFilesSince, gitHead } from '../lib/project-files.ts';
 import type { Rule } from '../lib/rulebook.schema.ts';
-import { emptySession } from '../lib/session-store.ts';
+import { emptySession, type AgentSession } from '../lib/session-store.ts';
 import { PREFIX, isPluginAgent, loadRulebook, projectDir, sessionStore, skip, type HookHandler } from './lib/hook-common.ts';
 import { contextOutput } from './lib/hook-io.ts';
 import { runHookMain } from './lib/runner.ts';
@@ -45,6 +45,7 @@ export function composeSliceContext(rulebookId: string, rulebookVersion: string,
   ];
   const footer = 'If the SubagentStop hook blocks the stop, fix the files listed in its reason and finish again.';
   const lines: string[] = [];
+  const ruleIds: string[] = [];
   let omitted = 0;
   for (const rule of ordered) {
     const candidate = [...header, ...lines, ruleLine(rule), footer].join('\n');
@@ -53,11 +54,12 @@ export function composeSliceContext(rulebookId: string, rulebookVersion: string,
       continue;
     }
     lines.push(ruleLine(rule));
+    ruleIds.push(rule.id);
   }
   if (omitted > 0) {
     lines.push(`- (${omitted} more rule(s) omitted for length; run nestjs-hexagonal-check --explain for the full list)`);
   }
-  return { text: [...header, ...lines, footer].join('\n'), ruleIds: ordered.slice(0, lines.length - (omitted > 0 ? 1 : 0)).map((rule) => rule.id) };
+  return { text: [...header, ...lines, footer].join('\n'), ruleIds };
 }
 
 export const handler: HookHandler = async (input, context) => {
@@ -72,9 +74,12 @@ export const handler: HookHandler = async (input, context) => {
   if (input.agent_id !== undefined) {
     const now = context.now ?? Date.now;
     const project = projectDir(input, context);
-    const fresh = emptySession(agentType, new Date(now()).toISOString(), gitHead(project));
-    // The event also fires on resume: keep the counters and paths of a running agent.
-    sessionStore(context).update(input.session_id, input.agent_id, (current) => (current.agentType === agentType ? { ...current, headSha: current.headSha ?? fresh.headSha } : fresh));
+    const headSha = gitHead(project);
+    const fresh: AgentSession = { ...emptySession(agentType, new Date(now()).toISOString(), headSha), baseline: headSha === null ? [] : (changedFilesSince(headSha, project) ?? []) };
+    // The event also fires on resume: keep the paths and the baseline of a running agent, reset its block counter.
+    sessionStore(context).update(input.session_id, input.agent_id, (current) =>
+      current.agentType === agentType ? { ...current, blocks: 0, headSha: current.headSha ?? fresh.headSha, baseline: current.headSha === null ? fresh.baseline : current.baseline } : fresh,
+    );
   }
   const { text, ruleIds } = composeSliceContext(loaded.composed.rulebook.id, loaded.composed.rulebook.version, agentType, loaded.composed.rules);
   return { output: contextOutput('SubagentStart', text), decision: 'context', ruleIds };
