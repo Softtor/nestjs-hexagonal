@@ -1,9 +1,10 @@
 import './helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { sha256Of } from '../lib/compose.ts';
 
 const PLUGIN_ROOT = resolve(import.meta.dir, '../..');
 const RUN_SH = join(PLUGIN_ROOT, 'scripts', 'run.sh');
@@ -29,13 +30,17 @@ function makeProject(withRulebook: boolean): string {
   const dir = mkdtempSync(join(tmpdir(), 'hex-run-'));
   if (withRulebook) {
     mkdirSync(join(dir, '.claude'));
-    writeFileSync(join(dir, '.claude', 'rulebook.yaml'), '$schema: nestjs-hexagonal/rulebook@1\nid: p\nversion: 0.1.0\nmodel: { provider: typesafe, pin: jev-1.13.0 }\n');
+    const base = readFileSync(join(PLUGIN_ROOT, 'rulebooks', 'hexagonal.rulebook.yaml'), 'utf8');
+    writeFileSync(
+      join(dir, '.claude', 'rulebook.yaml'),
+      `$schema: nestjs-hexagonal/rulebook@1\nid: p\nversion: 0.1.0\nextends:\n  - { id: hexagonal, version: 1.3.0, sha256: ${sha256Of(base)} }\nmodel: { provider: typesafe, pin: jev-1.13.0 }\n`,
+    );
   }
   return dir;
 }
 
 function hookInput(filePath: string): string {
-  return JSON.stringify({ tool_name: 'Write', tool_input: { file_path: filePath, content: 'x' } });
+  return JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 's', tool_name: 'Write', tool_input: { file_path: filePath, content: 'x' } });
 }
 
 describe('run.sh hook gate', () => {
@@ -75,12 +80,45 @@ describe('run.sh hook gate', () => {
     expect(traversal.stdout).toBe('');
   });
 
-  it('reaches check.ts for a file inside the project, even when it does not exist yet', () => {
+  it('reaches the hook script for a file inside the project, even when it does not exist yet', () => {
     const dir = makeProject(true);
-    const result = runSh(RUN_SH, ['--hook', 'pre-tool-use'], { CLAUDE_PROJECT_DIR: dir }, hookInput(join(dir, 'src', 'new', 'file.ts')));
+    const dataDir = mkdtempSync(join(tmpdir(), 'hex-data-'));
+    const result = runSh(RUN_SH, ['--hook', 'pre-tool-use'], { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_DATA: dataDir }, hookInput(join(dir, 'src', 'new', 'file.ts')));
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('not implemented in this version');
+    expect(result.stderr).toBe('');
+    const log = readdirSync(join(dataDir, 'logs'));
+    expect(log).toHaveLength(1);
+    expect(readFileSync(join(dataDir, 'logs', log[0] ?? ''), 'utf8')).toContain('"binarySource":"plugin-root"');
+  });
+
+  it('denies through run.sh when a plugin agent writes a NestJS decorator into the domain', () => {
+    const dir = makeProject(true);
+    const input = JSON.stringify({
+      hook_event_name: 'PreToolUse',
+      session_id: 's',
+      agent_id: 'a',
+      agent_type: 'nestjs-hexagonal:domain-agent',
+      cwd: dir,
+      tool_name: 'Write',
+      tool_input: { file_path: join(dir, 'src', 'orders', 'domain', 'order.service.ts'), content: "import { Injectable } from '@nestjs/common';\n" },
+    });
+    const result = runSh(RUN_SH, ['--hook', 'pre-tool-use'], { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'hex-data-')) }, input);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"permissionDecision":"deny"');
+    expect(result.stdout).toContain('hex/domain-no-nest-decorators');
+  });
+
+  it('exits 0 silently for --hook subagent-stop without a rulebook and for an unknown hook name', () => {
+    const dir = makeProject(false);
+    const stop = runSh(RUN_SH, ['--hook', 'subagent-stop'], { CLAUDE_PROJECT_DIR: dir }, JSON.stringify({ hook_event_name: 'SubagentStop', session_id: 's', agent_id: 'a', agent_type: 'nestjs-hexagonal:domain-agent', cwd: dir }));
+    expect(stop.status).toBe(0);
+    expect(stop.stdout).toBe('');
+    expect(stop.stderr).toBe('');
+    const unknown = runSh(RUN_SH, ['--hook', 'nope'], { CLAUDE_PROJECT_DIR: makeProject(true) }, '{}');
+    expect(unknown.status).toBe(0);
+    expect(unknown.stdout).toBe('');
+    expect(unknown.stderr).toContain("unknown hook 'nope'");
   });
 
   it('prefers the project node_modules binary when it is not itself', () => {
@@ -100,9 +138,10 @@ describe('run.sh hook gate', () => {
     const binDir = join(dir, 'node_modules', '.bin');
     mkdirSync(binDir, { recursive: true });
     symlinkSync(RUN_SH, join(binDir, 'nestjs-hexagonal-check'));
-    const result = runSh(RUN_SH, ['--hook', 'pre-tool-use'], { CLAUDE_PROJECT_DIR: dir }, hookInput(join(dir, 'a.ts')));
+    const result = runSh(RUN_SH, ['--hook', 'pre-tool-use'], { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'hex-data-')) }, hookInput(join(dir, 'a.ts')));
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain('not implemented in this version');
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
   });
 
   it('does not recurse when the project binary is a relative link to an installed copy of itself', () => {
@@ -208,5 +247,14 @@ describe('run.sh installed as a hoisted dev dependency', () => {
     expect(result.stderr).not.toContain('dependencies missing');
     expect(result.stdout).toContain('hex/domain-no-nest-decorators');
     expect(result.status).toBe(1);
+
+    mkdirSync(join(project, '.claude'));
+    writeFileSync(join(project, '.claude', 'rulebook.yaml'), '$schema: nestjs-hexagonal/rulebook@1\nid: p\nversion: 0.1.0\nmodel: { provider: typesafe, pin: jev-1.13.0 }\n');
+    const dataDir = mkdtempSync(join(tmpdir(), 'hex-data-'));
+    const hook = runSh(RUN_SH, ['--hook', 'pre-tool-use'], { CLAUDE_PROJECT_DIR: project, CLAUDE_PLUGIN_DATA: dataDir }, hookInput(join(project, 'src', 'orders', 'domain', 'order.service.ts')));
+    expect(hook.status).toBe(0);
+    expect(hook.stderr).toBe('');
+    const log = readdirSync(join(dataDir, 'logs'));
+    expect(readFileSync(join(dataDir, 'logs', log[0] ?? ''), 'utf8')).toContain('"binarySource":"node_modules"');
   });
 });

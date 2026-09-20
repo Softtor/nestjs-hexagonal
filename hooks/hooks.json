@@ -1,0 +1,71 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "matcher": "^nestjs-hexagonal:.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/run.sh", "--hook", "subagent-start"],
+            "timeout": 5,
+            "statusMessage": "nestjs-hexagonal: composing the rulebook slice"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/run.sh", "--hook", "pre-tool-use"],
+            "timeout": 5,
+            "statusMessage": "nestjs-hexagonal: static rules on the pending write"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/run.sh", "--hook", "post-tool-use"],
+            "timeout": 15,
+            "statusMessage": "nestjs-hexagonal: checking the written file"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/run.sh", "--hook", "agent-post-tool-use"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^nestjs-hexagonal:(domain-agent|application-agent|infrastructure-agent|presentation-agent|broadcasting-agent|listener-agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/run.sh", "--hook", "subagent-stop"],
+            "timeout": 20,
+            "statusMessage": "nestjs-hexagonal: checking the files this agent touched"
+          }
+        ]
+      }
+    ]
+  }
+}
