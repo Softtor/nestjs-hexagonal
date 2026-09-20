@@ -59,7 +59,7 @@ describe('fitRule', () => {
     const records = synthetic(10, 10, (i) => (i === 0 ? 0.72 : 0.1 + i * 0.02), (i) => 0.78 + i * 0.02);
     const fit = fitRule({ ruleId: 'hex/sample', records, uncertain: { lo: 0.35, hi: 0.65 } });
     expect(fit.fitted.advise).toBe(0.75);
-    expect(fit.fitted.ask).toBe(0.5);
+    expect(fit.fitted.ask).toBe(0.75);
     expect(fit.fitted.deny).toBeUndefined();
     expect(fit.denyReason).toContain('at least 30 good and 30 bad');
     expect(fit.fitted.uncertain).toEqual({ lo: 0.35, hi: 0.65 });
@@ -89,6 +89,30 @@ describe('fitRule', () => {
     expect(fit.metrics.uncertainRate).toBeCloseTo(0.5);
     expect(fit.fitted.minConfidence).toBe(0.6);
     expect(fit.fitted.uncertain).toBeUndefined();
+  });
+
+  it('keeps the fitted cuts monotone: ask is never below advise and deny never below ask', () => {
+    const records = synthetic(35, 35, (i) => (i < 3 ? 0.62 : 0.1), (i) => (i < 30 ? 0.9 : 0.5));
+    const fit = fitRule({ ruleId: 'hex/sample', records, uncertain: { lo: 0.35, hi: 0.65 } });
+    const { advise, ask, deny } = fit.fitted;
+    expect(advise).toBeDefined();
+    expect(ask).toBeDefined();
+    expect(deny).toBeDefined();
+    if (advise === undefined || ask === undefined || deny === undefined) return;
+    expect(ask).toBeGreaterThanOrEqual(advise);
+    expect(deny).toBeGreaterThanOrEqual(ask);
+    expect(deny).toBe(0.65);
+  });
+
+  it('pushes ask up to the advise cut when precision was already high below it', () => {
+    const records = synthetic(10, 10, (i) => 0.05 + i * 0.01, (i) => (i < 8 ? 0.9 : 0.7));
+    const fit = fitRule({ ruleId: 'hex/sample', records });
+    expect(fit.fitted.advise).toBe(0.5);
+    expect(fit.fitted.ask).toBe(0.5);
+    const shifted = synthetic(10, 10, (i) => (i < 2 ? 0.55 : 0.1), (i) => (i < 8 ? 0.9 : 0.7));
+    const shiftedFit = fitRule({ ruleId: 'hex/sample', records: shifted });
+    expect(shiftedFit.fitted.advise).toBe(0.6);
+    expect(shiftedFit.fitted.ask).toBe(0.6);
   });
 
   it('ignores errored records in the counts', () => {

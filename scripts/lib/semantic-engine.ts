@@ -109,7 +109,7 @@ export function planSemanticRequests(rules: Rule[], files: SourceFile[], hunksBy
   return { requests, applied };
 }
 
-export function splitByBudget(request: PlannedRequest): PlannedRequest[] {
+export function splitByBudget(request: PlannedRequest, dropped: string[] = []): PlannedRequest[] {
   const stateTokens = estimateTokens(request.state);
   const entries = Object.entries(request.questions);
   const batches: PlannedRequest[] = [];
@@ -118,6 +118,7 @@ export function splitByBudget(request: PlannedRequest): PlannedRequest[] {
   for (const entry of entries) {
     const tokens = estimateTokens(entry[1]);
     if (stateTokens + tokens > STATE_TOKEN_BUDGET) {
+      dropped.push(entry[0]);
       continue;
     }
     if (current.length > 0 && currentTokens + tokens > REQUEST_TOKEN_BUDGET) {
@@ -170,9 +171,16 @@ export async function runPool<T>(items: T[], concurrency: number, worker: (item:
 
 export async function runSemanticRules(rules: Rule[], files: SourceFile[], options: SemanticRunOptions): Promise<SemanticRunResult> {
   const plan = planSemanticRequests(rules, files, options.hunksByPath ?? {});
-  const batches = plan.requests.flatMap(splitByBudget);
   const findings: SemanticFinding[] = [];
   const warnings: string[] = [];
+  const batches = plan.requests.flatMap((request) => {
+    const dropped: string[] = [];
+    const split = splitByBudget(request, dropped);
+    if (dropped.length > 0) {
+      warnings.push(`${request.path}: state plus question exceed the ${STATE_TOKEN_BUDGET} token budget; skipped ${dropped.join(', ')}`);
+    }
+    return split;
+  });
   let cached = 0;
   let inputTokens = 0;
 

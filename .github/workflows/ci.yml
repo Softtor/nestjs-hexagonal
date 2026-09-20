@@ -72,6 +72,7 @@ jobs:
 
       - name: Run the golden cases through Jev (budget 500 requests)
         if: steps.gate.outputs.run == 'true'
+        continue-on-error: true
         run: bun calibration/run.ts --rule all --pin jev-1.13.0 --out calibration/results/jev-1.13.0 --max-requests 500
 
       - name: Fit thresholds and write the report

@@ -158,7 +158,8 @@ export function fitRule(input: FitInput): FitResult {
   if (best) {
     fitted.advise = best.cut;
   }
-  const ask = usable.find((entry) => entry.precision >= ASK_MIN_PRECISION);
+  const askFloor = fitted.advise ?? 0;
+  const ask = usable.find((entry) => entry.cut >= askFloor && entry.precision >= ASK_MIN_PRECISION);
   if (ask) {
     fitted.ask = ask.cut;
   }
@@ -167,7 +168,8 @@ export function fitRule(input: FitInput): FitResult {
   if (metrics.nGood < DENY_MIN_SAMPLES || metrics.nBad < DENY_MIN_SAMPLES) {
     denyReason = `needs at least ${DENY_MIN_SAMPLES} good and ${DENY_MIN_SAMPLES} bad cases (have ${metrics.nGood}/${metrics.nBad})`;
   } else {
-    const deny = usable.find((entry) => entry.precision >= DENY_MIN_PRECISION && entry.fp === 0);
+    const denyFloor = fitted.ask ?? askFloor;
+    const deny = usable.find((entry) => entry.cut >= denyFloor && entry.precision >= DENY_MIN_PRECISION && entry.fp === 0);
     if (deny) {
       fitted.deny = deny.cut;
     } else {
