@@ -220,6 +220,41 @@ describe('runCli', () => {
     expect(report.findings.map((finding) => finding.path)).toEqual(['bc/domain/dirty.ts']);
   });
 
+  it('resolves --diff paths from a subdirectory and includes untracked files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hex-git-sub-'));
+    const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q', '-b', 'main');
+    mkdirSync(join(dir, 'bc', 'domain'), { recursive: true });
+    writeFileSync(join(dir, 'bc', 'domain', 'clean.ts'), 'export const clean = 1;\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    writeFileSync(join(dir, 'bc', 'domain', 'dirty.ts'), "import { Injectable } from '@nestjs/common';\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'dirty');
+    writeFileSync(join(dir, 'bc', 'domain', 'untracked.ts'), "import { Module } from '@nestjs/common';\n");
+
+    const fromRoot = runJson(['--rulebook', 'hexagonal', '--diff', 'HEAD~1'], {}, dir);
+    expect(fromRoot.report.findings.map((finding) => finding.path)).toEqual(['bc/domain/dirty.ts', 'bc/domain/untracked.ts']);
+
+    const fromSubdir = runJson(['--rulebook', 'hexagonal', '--diff', 'HEAD~1'], {}, join(dir, 'bc'));
+    expect(fromSubdir.report.findings.map((finding) => finding.path)).toEqual(['domain/dirty.ts', 'domain/untracked.ts']);
+    expect(fromSubdir.report.findings.map((finding) => finding.ruleId)).toEqual(fromRoot.report.findings.map((finding) => finding.ruleId));
+  });
+
+  it('warns on stderr when --strict runs over zero eligible files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hex-git-empty-'));
+    const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q', '-b', 'main');
+    writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    const { code, io } = run(['--rulebook', 'hexagonal', '--diff', 'HEAD', '--strict'], {}, dir);
+    expect(code).toBe(0);
+    expect(io.err.join('')).toContain('no files');
+    const globs = run(['--rulebook', 'hexagonal', '--files', 'nothing/**', '--strict'], {}, dir);
+    expect(globs.io.err.join('')).toContain('no files');
+  });
+
   it('treats --hook as a no-op in this version', () => {
     const { code, io } = run(['--hook', 'pre-tool-use']);
     expect(code).toBe(0);

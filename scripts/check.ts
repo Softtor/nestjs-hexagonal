@@ -208,13 +208,15 @@ function expandGlobs(globs: string[], cwd: string): string[] {
 }
 
 function changedFiles(base: string, cwd: string): string[] {
-  const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', base], { cwd, encoding: 'utf8' });
-  return output
+  const diff = execFileSync('git', ['diff', '--name-only', '--relative', '--diff-filter=ACMR', base], { cwd, encoding: 'utf8' });
+  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd, encoding: 'utf8' });
+  const paths = `${diff}\n${untracked}`
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .filter((line) => existsSync(resolve(cwd, line)))
+    .filter((line) => existsSync(resolve(cwd, line)) && statSync(resolve(cwd, line)).isFile())
     .map((line) => normalizePath(line));
+  return [...new Set(paths)].sort();
 }
 
 function readSources(paths: string[], cwd: string): SourceFile[] {
@@ -313,6 +315,9 @@ export function runCli(argv: string[], io: CliIo, options: CliOptions): number {
     }
     const paths = args.diff !== undefined ? changedFiles(args.diff, options.cwd) : expandGlobs(args.files, options.cwd);
     const files = readSources(paths, options.cwd);
+    if (files.length === 0) {
+      io.stderr(`warning: no files matched ${args.diff !== undefined ? `--diff ${args.diff}` : args.files.join(' ')}; nothing was checked\n`);
+    }
 
     const report = buildReport(composed, rulebookPath, files, args, io);
     for (const warning of report.warnings) {
