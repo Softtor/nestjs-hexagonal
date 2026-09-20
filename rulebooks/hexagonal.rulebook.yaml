@@ -1,11 +1,11 @@
 # Project-agnostic rulebook for NestJS bounded contexts built with
 # Hexagonal Architecture + DDD + CQRS. Sources point at the check ids of
 # skills/review-subdomain/SKILL.md (D1..M4) and the smells listed in
-# agents/architecture-reviewer.md. Semantic and runtime rules are declared
-# here but only static rules are executed by this version of the CLI.
+# agents/architecture-reviewer.md. Static rules run offline; semantic rules
+# are asked to Jev when TYPESAFE_API_KEY is set; runtime rules are still inert.
 $schema: nestjs-hexagonal/rulebook@1
 id: hexagonal
-version: 1.2.0
+version: 1.3.0
 extends: []
 model:
   provider: typesafe
@@ -261,7 +261,10 @@ rules:
     tags: [yagni]
 
   # --------------------------------------------------------------------------
-  # semantic (declared; inert until the Jev client ships)
+  # semantic (asked to Jev through scripts/lib/semantic-engine.ts; advisory
+  # until calibration/fitted/<pin>.json carries fitted thresholds. Rulebook
+  # thresholds only declare advise and the abstention band: ask and deny are
+  # taken from the fitted file, never from here)
   # --------------------------------------------------------------------------
   - id: hex/handler-no-business-rules
     title: Handlers do not decide business rules
@@ -272,30 +275,39 @@ rules:
     class: semantic
     severity: FAIL
     rationale: >-
-      A handler orchestrates: load, call the aggregate, save, commit. A
-      condition on domain state that changes the outcome is an invariant and
-      belongs to the entity or value object.
-    fix: Move the condition into an entity or value object method and call it from the handler.
+      A handler orchestrates: load, check existence, call the aggregate, save,
+      publish. A calculation or branch on domain state that decides the
+      business outcome is an invariant and belongs to the entity or value
+      object, where it has a unit test seam.
+    fix: Move the calculation or condition into an entity or value object method and call that method from the handler.
     source: review-subdomain A4 context; architecture-reviewer god handler
     question:
       type: noul
       instructions: >-
-        The handler itself decides a business rule: an if/switch on domain
-        state (status, amounts, dates, quantities) that changes what happens,
-        instead of calling a method of an entity or value object. Null checks,
-        organization ownership checks, mapping and the load-act-save-commit
-        sequence are not business rules.
+        The handler's own code decides a business outcome from domain state.
+        Answer yes only when the handler body itself does at least one of
+        these: computes a business amount (total, discount, fee, tax,
+        balance) from entity fields; branches with if, switch or a ternary on
+        a domain field (status, amount, quantity, date, tier) and that branch
+        changes what is persisted or published; assigns entity properties
+        directly instead of calling an entity method; or picks the next
+        status of an entity itself. Answer no when the handler only does
+        orchestration: loads entities, throws when a record is missing or
+        belongs to another organization, checks permissions through a policy
+        or guard, maps input to a command or DTO, calls methods of the entity
+        or a domain service, re-reads and retries after a blocked or
+        conflicting save, saves, commits or publishes. Comments and names do
+        not count; judge the executable statements only.
     state:
-      slice: file
+      slice: declaration
       contextLines: 0
       maxTokens: 4000
       preamble: >-
-        TypeScript CQRS command handler in a NestJS bounded context built with
-        hexagonal architecture. Invariants belong to aggregates and value
-        objects; handlers only orchestrate.
+        TypeScript CQRS command or query handler from the application layer
+        of a NestJS bounded context built with hexagonal architecture.
+        Invariants belong to aggregates and value objects; handlers only
+        orchestrate.
     thresholds:
-      deny: 0.9
-      ask: 0.75
       advise: 0.55
       uncertain: { lo: 0.35, hi: 0.65 }
     tags: [orchestration]
@@ -315,10 +327,15 @@ rules:
     question:
       type: noul
       instructions: >-
-        The port interface exposes an infrastructure detail in its signature:
-        a parameter, return type or method name that names a vendor SDK, ORM
-        model, HTTP request or response, queue message or SQL. Domain
-        entities, value objects and plain TypeScript objects are not leaks.
+        The port's signature exposes an infrastructure detail. Answer yes only
+        when a parameter type, return type, method name or imported type of
+        the exported interface names a vendor SDK client or payload, an ORM
+        model or query builder, an HTTP request, response, header or status
+        code, a queue or broker message, raw SQL, a file handle, or a cache
+        client. Answer no when the interface only uses domain entities, value
+        objects, primitives, Promise, Date, plain TypeScript objects declared
+        in the same file or the domain, and a Symbol token. Comments do not
+        count; judge the types and names in the signature only.
     state:
       slice: file
       contextLines: 0
@@ -327,8 +344,6 @@ rules:
         TypeScript port (interface plus Symbol token) from the application
         layer of a hexagonal NestJS bounded context.
     thresholds:
-      deny: 0.9
-      ask: 0.75
       advise: 0.55
       uncertain: { lo: 0.35, hi: 0.65 }
     tags: [ports]
@@ -349,10 +364,14 @@ rules:
     question:
       type: noul
       instructions: >-
-        The entity class exposes state only through getters, setters or public
-        fields and has no method that enforces a rule, changes state under a
-        condition or applies a domain event. The create/restore factories,
-        getters and toJSON do not count as behavior.
+        The entity class is anemic. Answer yes only when every member of the
+        class is a constructor, a static create or restore factory, a getter,
+        a setter, a public field, toJSON or equals, so that no instance method
+        enforces a rule, throws on an invalid transition, changes state under
+        a condition or applies a domain event. Answer no when at least one
+        instance method does any of those things, even if the class also has
+        getters. Comments and method names do not count; judge the method
+        bodies only.
     state:
       slice: file
       contextLines: 0
@@ -381,12 +400,20 @@ rules:
     question:
       type: noul
       instructions: >-
-        A controller method does more than turning the HTTP request into a
-        command, query or use case call and returning the result: it calls a
-        repository directly, instantiates a domain entity, or branches on
-        domain data beyond a null check.
+        A controller method contains logic beyond translating the HTTP
+        request. Answer yes only when a method body does at least one of
+        these: calls a repository, ORM client or database directly;
+        instantiates or mutates a domain entity or value object; computes a
+        business value; or branches on domain data (status, amounts, roles
+        read from the record) to choose different behavior. Answer no when
+        the methods only read params, query, body and headers, apply guards,
+        pipes, decorators and validation DTOs, build a command, query or use
+        case input, dispatch it through a bus or an injected use case, map
+        the result to a response DTO or status code, and throw an HTTP
+        exception when the result is missing. Comments do not count; judge
+        the executable statements only.
     state:
-      slice: file
+      slice: declaration
       contextLines: 0
       maxTokens: 4000
       preamble: >-
@@ -413,18 +440,19 @@ rules:
     question:
       type: choice
       instructions: >-
-        Which over-engineering shape, if any, does this file introduce?
+        Which over-engineering shape, if any, does this file introduce? Judge
+        the executable code only; comments do not count.
       options:
         - id: trivial-use-case
-          criteria: A use case or handler that only wraps a single findById or findAll, with no authorization, side effect or mapping.
+          criteria: A use case or handler whose execute method only calls a single findById, findAll or similar read and returns it, with no authorization check, side effect, event or mapping.
         - id: redundant-mapper
-          criteria: An output mapper that copies the same fields the entity's toJSON() already returns.
+          criteria: An output mapper class or function that copies the same fields the entity's toJSON() or getters already return, field by field, without renaming, computing or omitting anything.
         - id: delegating-service
-          criteria: A service whose methods only forward to one use case without adding logic.
+          criteria: A service class whose methods only forward their arguments to one use case or handler each, adding no logic, validation or composition.
         - id: trivial-read-model
-          criteria: A read model, projection or cache for a query that one indexed database query answers.
+          criteria: A read model, projection, cache or denormalized table maintained for a query that one indexed database query answers directly.
         - id: none
-          criteria: The file does not introduce any of the shapes above.
+          criteria: The file does not introduce any of the shapes above; it has a validation, authorization, mapping, event, composition or a second consumer that justifies the layer.
         - id: other
           criteria: Something else that does not fit the options above.
       violatingOptions: [trivial-use-case, redundant-mapper, delegating-service, trivial-read-model]
