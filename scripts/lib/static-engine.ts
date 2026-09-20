@@ -230,10 +230,10 @@ const MODIFIERS = '(?:(?:public|private|protected|static|async|override|readonly
 function declarationPatterns(check: Extract<Check, { kind: 'line-count' }>): RegExp[] {
   const name = check.name ?? '[A-Za-z_$][\\w$]*';
   if (check.selector === 'method') {
-    return [new RegExp(`^[ \\t]*${MODIFIERS}(?:async\\s+)?\\*?\\s*(?:${name})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)[^{;=]*\\{`, 'gm')];
+    return [new RegExp(`^[ \\t]*${MODIFIERS}(?:async\\s+)?\\*?\\s*(?:${name})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)(?:[^{;=]|\\{[^{}]*\\})*\\{`, 'gm')];
   }
   return [
-    new RegExp(`^[ \\t]*${MODIFIERS}function\\s*\\*?\\s*(?:${name})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)[^{;]*\\{`, 'gm'),
+    new RegExp(`^[ \\t]*${MODIFIERS}function\\s*\\*?\\s*(?:${name})\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)(?:[^{;]|\\{[^{}]*\\})*\\{`, 'gm'),
     new RegExp(
       `^[ \\t]*${MODIFIERS}(?:const|let|var)\\s+(?:${name})\\s*(?::[^=]*)?=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*(?::[^=]*)?=>\\s*\\{`,
       'gm',

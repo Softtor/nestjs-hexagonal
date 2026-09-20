@@ -167,6 +167,15 @@ describe('line-count check', () => {
     expect(result.findings[0]?.evidence).toContain('7 lines');
   });
 
+  it('counts a method whose return type contains braces', () => {
+    const rule = makeRule({ check: { kind: 'line-count', selector: 'method', name: 'execute', max: 3 } });
+    const source = 'class H {\n  async execute(command: C): Promise<{ id: string }> {\n    a();\n    b();\n    c();\n  }\n}';
+    const result = runStaticRules([rule], [file('h.ts', source)]);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.line).toBe(2);
+    expect(result.findings[0]?.evidence).toContain('5 lines');
+  });
+
   it('does not treat a call as a declaration', () => {
     const rule = makeRule({ check: { kind: 'line-count', selector: 'method', name: 'execute', max: 1 } });
     expect(runStaticRules([rule], [file('c.ts', 'await this.handler.execute(\n cmd,\n);')]).findings).toHaveLength(0);
