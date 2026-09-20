@@ -43,11 +43,34 @@ export function readSources(paths: string[], base: string): SourceFile[] {
   return paths.map((path) => ({ path, content: readFileSync(resolve(base, path), 'utf8') }));
 }
 
-/** Every TypeScript source of the project tree, with paths relative to `base`. */
+function gitSources(root: string, base: string): string[] | null {
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+    return out
+      .split('\0')
+      .filter((entry) => entry !== '' && SOURCE_EXTENSIONS.some((extension) => entry.endsWith(extension)))
+      .map((entry) => resolve(root, entry))
+      .filter((full) => existsSync(full) && statSync(full).isFile())
+      .map((full) => normalizePath(relative(base, full)));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every TypeScript source of the project tree, with paths relative to `base`.
+ * Inside a repository the list comes from `git ls-files` (tracked plus
+ * untracked, honouring .gitignore, so worktrees and build output stay out);
+ * elsewhere the tree is walked.
+ */
 export function projectSources(base: string): SourceFile[] {
-  const root = gitTopLevel(base) ?? base;
+  const root = gitTopLevel(base);
+  const fromGit = root === null ? null : gitSources(root, base);
+  if (fromGit !== null) {
+    return readSources(fromGit, base);
+  }
   const paths: string[] = [];
-  walkTree(root, base, paths);
+  walkTree(root ?? base, base, paths);
   return readSources(paths, base);
 }
 

@@ -72,8 +72,9 @@ export const handler: HookHandler = async (input, context) => {
   if (input.agent_id !== undefined) {
     const now = context.now ?? Date.now;
     const project = projectDir(input, context);
-    const session = emptySession(agentType, new Date(now()).toISOString(), gitHead(project));
-    sessionStore(context).update(input.session_id, input.agent_id, () => session);
+    const fresh = emptySession(agentType, new Date(now()).toISOString(), gitHead(project));
+    // The event also fires on resume: keep the counters and paths of a running agent.
+    sessionStore(context).update(input.session_id, input.agent_id, (current) => (current.agentType === agentType ? { ...current, headSha: current.headSha ?? fresh.headSha } : fresh));
   }
   const { text, ruleIds } = composeSliceContext(loaded.composed.rulebook.id, loaded.composed.rulebook.version, agentType, loaded.composed.rules);
   return { output: contextOutput('SubagentStart', text), decision: 'context', ruleIds };

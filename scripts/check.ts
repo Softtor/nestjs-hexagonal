@@ -9,7 +9,7 @@ import { createJevClient, type FetchLike } from './lib/jev-client.ts';
 import { changedFilesSince, projectSources, readSources } from './lib/project-files.ts';
 import { RulebookNotFoundError, loadProjectRulebook } from './lib/project-rulebook.ts';
 import { matchGlob, normalizePath } from './lib/scope.ts';
-import { resolveDataDir } from './lib/session-store.ts';
+import { MARKETPLACE_DATA_ID, resolveDataDir } from './lib/session-store.ts';
 import { explainRequests, planSemanticRequests, runSemanticRules, type SemanticExplain, type SemanticFinding, type Undecided } from './lib/semantic-engine.ts';
 import type { Hunk } from './lib/state-builder.ts';
 import { runStaticRules, type Finding, type SourceFile } from './lib/static-engine.ts';
@@ -440,16 +440,18 @@ function exitCode(report: Report, args: ParsedArgs): number {
   return args.failOnUncertain && (uncertain || unanswered) ? 3 : 0;
 }
 
-const EXPORT_LOGS_USAGE = `Usage: nestjs-hexagonal-check export-logs --since <date> [--out <file>]
+const EXPORT_LOGS_USAGE = `Usage: nestjs-hexagonal-check export-logs --since <date> [--out <file>] [--data-dir <dir>]
 
-  Aggregates the hook decisions logged under $CLAUDE_PLUGIN_DATA/logs/hooks-YYYYMMDD.jsonl
+  Aggregates the hook decisions logged under <data-dir>/logs/hooks-YYYYMMDD.jsonl
   since <date> (ISO 8601): entries, p50/p95 latency per hook, decisions by kind,
   binary sources and semantic uncertain/uncalibrated rates. Writes JSON to --out or stdout.
+  <data-dir> defaults to $CLAUDE_PLUGIN_DATA, then ~/.claude/plugins/data/${MARKETPLACE_DATA_ID}.
 `;
 
 function runExportLogs(argv: string[], io: CliIo, options: CliOptions): number {
   let since: string | undefined;
   let out: string | undefined;
+  let dataDir: string | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const value = argv[i + 1];
@@ -458,6 +460,9 @@ function runExportLogs(argv: string[], io: CliIo, options: CliOptions): number {
       i += 1;
     } else if (arg === '--out' && value !== undefined) {
       out = value;
+      i += 1;
+    } else if (arg === '--data-dir' && value !== undefined) {
+      dataDir = resolve(options.cwd, value);
       i += 1;
     } else {
       io.stderr(`unknown option '${arg}'\n${EXPORT_LOGS_USAGE}`);
@@ -470,7 +475,7 @@ function runExportLogs(argv: string[], io: CliIo, options: CliOptions): number {
   }
   const sinceDate = new Date(since);
   const until = new Date();
-  const summary = summarizeHookLogs(readHookLogs(resolveDataDir(options.env), sinceDate), sinceDate, until);
+  const summary = summarizeHookLogs(readHookLogs(dataDir ?? resolveDataDir(options.env), sinceDate), sinceDate, until);
   const text = `${JSON.stringify(summary, null, 2)}\n`;
   if (out === undefined) {
     io.stdout(text);

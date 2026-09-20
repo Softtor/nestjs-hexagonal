@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { composeRulebook, loadComposedRulebook, RulebookCompositionError, type BaseResolver } from '../lib/compose.ts';
+import { composeRulebook, loadComposedRulebook, RulebookCompositionError, semanticRulebookVersion, type BaseResolver } from '../lib/compose.ts';
 import { parseRulebook, type Rulebook } from '../lib/rulebook.schema.ts';
 
 function sha256(text: string): string {
@@ -215,10 +215,40 @@ describe('loadComposedRulebook', () => {
     expect(composed.rulebook.id).toBe('proj');
   });
 
+  it('exposes the version of every composed rulebook', () => {
+    const project = book('proj', [rule('proj/c')], { version: '0.1.0', extends: [{ id: 'base', version: '1.0.0', sha256: sha256(baseText) }] });
+    const composed = composeRulebook(project, resolver({ base: { rulebook: base, text: baseText } }));
+    expect(composed.versions).toEqual({ proj: '0.1.0', base: '1.0.0' });
+  });
+
   it('reports schema errors with the file path', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rulebook-'));
     const path = join(dir, 'broken.yaml');
     writeFileSync(path, stringify({ id: 'x' }));
     expect(() => loadComposedRulebook(path, dir)).toThrow(/broken\.yaml/);
+  });
+});
+
+describe('semanticRulebookVersion', () => {
+  const semantic = (id: string) =>
+    rule(id, {
+      class: 'semantic',
+      question: { type: 'noul', instructions: 'q' },
+      state: { slice: 'file' },
+      check: undefined,
+    });
+  const semanticBase = book('base', [semantic('hex/s')]);
+
+  it('is the base version when every semantic rule comes from that base', () => {
+    const project = book('proj', [rule('proj/c')], { version: '0.1.0', extends: [{ id: 'base', version: '1.0.0', sha256: sha256(baseText) }] });
+    const composed = composeRulebook(project, resolver({ base: { rulebook: semanticBase, text: baseText } }));
+    expect(semanticRulebookVersion(composed)).toBe('1.0.0');
+  });
+
+  it('is the project version when semantic rules come from more than one rulebook, or from none', () => {
+    const mixed = book('proj', [semantic('proj/s')], { version: '0.1.0', extends: [{ id: 'base', version: '1.0.0', sha256: sha256(baseText) }] });
+    expect(semanticRulebookVersion(composeRulebook(mixed, resolver({ base: { rulebook: semanticBase, text: baseText } })))).toBe('0.1.0');
+    const none = book('proj', [rule('proj/c')], { version: '0.2.0' });
+    expect(semanticRulebookVersion(composeRulebook(none, resolver({})))).toBe('0.2.0');
   });
 });

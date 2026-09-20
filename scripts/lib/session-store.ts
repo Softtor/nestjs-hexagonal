@@ -1,5 +1,5 @@
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -51,11 +51,24 @@ export function emptySession(agentType: string, startedAt: string, headSha: stri
   return { agentType, startedAt, headSha, touchedPaths: [], blocks: 0, advisoryBytes: 0, unresolved: [] };
 }
 
-/** `$CLAUDE_PLUGIN_DATA`, or a per-user temp directory when the plugin runs in place without one. */
+/** Data directory id of a marketplace install: `<plugin>@<marketplace>` with `@` replaced by `-` (plugins-reference.md, "Persistent data directory"). */
+export const MARKETPLACE_DATA_ID = 'nestjs-hexagonal-softtor-nestjs-hexagonal';
+
+/**
+ * `$CLAUDE_PLUGIN_DATA` (exported to hook processes), else the marketplace
+ * install's data directory when it exists (a terminal running `export-logs`
+ * does not receive the variable), else a per-user temp directory (plugin
+ * loaded in place).
+ */
 export function resolveDataDir(env: Record<string, string | undefined>): string {
   const fromEnv = env.CLAUDE_PLUGIN_DATA;
   if (fromEnv !== undefined && fromEnv !== '') {
     return fromEnv;
+  }
+  const home = env.HOME !== undefined && env.HOME !== '' ? env.HOME : homedir();
+  const marketplace = join(home, '.claude', 'plugins', 'data', MARKETPLACE_DATA_ID);
+  if (existsSync(marketplace)) {
+    return marketplace;
   }
   return join(tmpdir(), 'nestjs-hexagonal-data');
 }

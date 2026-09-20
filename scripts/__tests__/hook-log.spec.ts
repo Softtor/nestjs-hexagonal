@@ -115,6 +115,10 @@ describe('hook log', () => {
     expect(await runCli(['export-logs', '--since', '2026-09-20'], stdoutIo, { cwd: dataDir, env: { CLAUDE_PLUGIN_DATA: dataDir }, pluginRoot: PLUGIN_ROOT })).toBe(0);
     expect(stdoutIo.out.join('')).toContain('"entries": 2');
 
+    const explicit = capture();
+    expect(await runCli(['export-logs', '--since', '2026-09-20', '--data-dir', dataDir], explicit, { cwd: tmpdir(), env: { HOME: mkdtempSync(join(tmpdir(), 'hex-home-')) }, pluginRoot: PLUGIN_ROOT })).toBe(0);
+    expect(explicit.out.join('')).toContain('"entries": 2');
+
     const usage = capture();
     expect(await runCli(['export-logs'], usage, { cwd: dataDir, env: {}, pluginRoot: PLUGIN_ROOT })).toBe(2);
     expect(usage.err.join('')).toContain('--since');

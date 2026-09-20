@@ -72,4 +72,15 @@ describe('subagent-start hook', () => {
     const [entry] = readLog(project);
     expect(entry).toMatchObject({ hook: 'subagent-start', event: 'SubagentStart', agentType: DOMAIN_AGENT, decision: 'context' });
   });
+
+  it('keeps the counters of a running agent when the event fires again on resume', async () => {
+    const project = makeProject();
+    const input = { hook_event_name: 'SubagentStart', session_id: 's', agent_id: 'agent-1', agent_type: DOMAIN_AGENT, cwd: project.dir };
+    await runHook('subagent-start', handler, input, context(project));
+    project.store.update('s', 'agent-1', (session) => ({ ...session, blocks: 2, touchedPaths: ['src/a.ts'] }));
+    await runHook('subagent-start', handler, input, context(project));
+    expect(project.store.read('s', 'agent-1')).toMatchObject({ blocks: 2, touchedPaths: ['src/a.ts'] });
+    await runHook('subagent-start', handler, { ...input, agent_type: 'nestjs-hexagonal:application-agent' }, context(project));
+    expect(project.store.read('s', 'agent-1')).toMatchObject({ blocks: 0, touchedPaths: [], agentType: 'nestjs-hexagonal:application-agent' });
+  });
 });

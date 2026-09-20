@@ -61,7 +61,7 @@ The blocking mechanics of the `SubagentStop` hook were verified against the Clau
 1. Create a dummy project with `.claude/rulebook.yaml` extending `hexagonal` (stamp with `sha256sum rulebooks/hexagonal.rulebook.yaml`), `bun install` in the plugin, bump `version`, `/plugin update`, `/reload-plugins`.
 2. Run `nestjs-hexagonal:create-subdomain` for a small aggregate and, in the `domain-agent` prompt, ask for an `@Injectable()` service under `domain/`.
 3. Observe the `PreToolUse` deny (`[plugin:nestjs-hexagonal]` reason with `hex/domain-no-nest-decorators`), then force the file through `Bash` and observe the `SubagentStop` block, the second block and the release `systemMessage` on the third stop.
-4. Export the evidence: `nestjs-hexagonal-check export-logs --since <today> --out calibration/experiments/hooks-spike.json` and attach it to the pilot report.
+4. Export the evidence: `nestjs-hexagonal-check export-logs --since <today> --out calibration/experiments/hooks-spike.json` (add `--data-dir` when the plugin was not installed from the marketplace) and attach it to the pilot report; the p95 of `post-tool-use` is the first number to read, because the two project-wide static checks list the repository through `git ls-files` on every domain or application write.
 
 ## Changing a question
 

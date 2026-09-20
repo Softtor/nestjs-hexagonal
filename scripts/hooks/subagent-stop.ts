@@ -31,8 +31,13 @@ export const MAX_BLOCKS = 2;
 export const REASON_MAX_FINDINGS = 20;
 const SEMANTIC_CONCURRENCY = 8;
 
+/**
+ * Paths recorded by PostToolUse plus, when SubagentStart recorded the HEAD,
+ * what git sees changed since then. Without a recorded HEAD the diff would
+ * attribute every dirty file of the repository to this agent, so it is skipped.
+ */
 export function touchedFiles(session: AgentSession, project: string): string[] {
-  const fromGit = changedFilesSince(session.headSha ?? 'HEAD', project) ?? [];
+  const fromGit = session.headSha === null ? [] : (changedFilesSince(session.headSha, project) ?? []);
   const union = new Set<string>([...session.touchedPaths, ...fromGit]);
   return [...union].filter((path) => existsSync(resolve(project, path)) && statSync(resolve(project, path)).isFile()).sort();
 }

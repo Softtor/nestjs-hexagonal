@@ -50,6 +50,7 @@ describe('subagent-stop hook', () => {
     writeProjectFile(project, 'src/from-store.ts', 'export const c = 1;\n');
     const session = { ...emptySession(DOMAIN_AGENT, 'now', head), touchedPaths: ['src/from-store.ts', 'src/deleted.ts'] };
     expect(touchedFiles(session, project.dir)).toEqual(['src/before.ts', 'src/from-store.ts', 'src/untracked.ts']);
+    expect(touchedFiles({ ...emptySession(DOMAIN_AGENT, 'now', null), touchedPaths: ['src/from-store.ts'] }, project.dir)).toEqual(['src/from-store.ts']);
     const noGit = makeProject();
     writeProjectFile(noGit, 'src/only-store.ts', 'export const d = 1;\n');
     expect(touchedFiles({ ...emptySession(DOMAIN_AGENT, 'now', null), touchedPaths: ['src/only-store.ts'] }, noGit.dir)).toEqual(['src/only-store.ts']);

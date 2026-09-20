@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSessionStore, emptySession, resolveDataDir, sanitizeId, SESSION_TTL_MS } from '../lib/session-store.ts';
+import { createSessionStore, emptySession, MARKETPLACE_DATA_ID, resolveDataDir, sanitizeId, SESSION_TTL_MS } from '../lib/session-store.ts';
 
 const WORKER = join(import.meta.dir, 'helpers', 'session-store-worker.ts');
 
@@ -97,9 +97,13 @@ describe('session store', () => {
     expect(store.collectGarbage()).toBe(0);
   });
 
-  it('falls back to a temp directory when CLAUDE_PLUGIN_DATA is not set', () => {
-    expect(resolveDataDir({ CLAUDE_PLUGIN_DATA: '/data/x' })).toBe('/data/x');
-    expect(resolveDataDir({})).toBe(join(tmpdir(), 'nestjs-hexagonal-data'));
-    expect(resolveDataDir({ CLAUDE_PLUGIN_DATA: '' })).toBe(join(tmpdir(), 'nestjs-hexagonal-data'));
+  it('falls back to the marketplace data directory, then to a temp directory, when CLAUDE_PLUGIN_DATA is not set', () => {
+    const home = mkdtempSync(join(tmpdir(), 'hex-home-'));
+    expect(resolveDataDir({ CLAUDE_PLUGIN_DATA: '/data/x', HOME: home })).toBe('/data/x');
+    expect(resolveDataDir({ HOME: home })).toBe(join(tmpdir(), 'nestjs-hexagonal-data'));
+    expect(resolveDataDir({ CLAUDE_PLUGIN_DATA: '', HOME: home })).toBe(join(tmpdir(), 'nestjs-hexagonal-data'));
+    const marketplace = join(home, '.claude', 'plugins', 'data', MARKETPLACE_DATA_ID);
+    mkdirSync(marketplace, { recursive: true });
+    expect(resolveDataDir({ HOME: home })).toBe(marketplace);
   });
 });
