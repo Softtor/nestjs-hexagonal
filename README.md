@@ -33,8 +33,11 @@ This plugin provides layer-specific skills, specialized agents, and workflow orc
 ### Local development
 
 ```bash
+cd /path/to/nestjs-hexagonal && bun install   # --plugin-dir does not get the automatic dependency install
 claude --plugin-dir /path/to/nestjs-hexagonal
 ```
+
+Claude Code installs the Node dependencies of a plugin it copies into its cache (marketplace install), but a plugin loaded in place with `--plugin-dir` or from a local-directory marketplace keeps its source directory as `CLAUDE_PLUGIN_ROOT` and gets no install. Without `node_modules` the hooks fail open (one actionable line on stderr, exit 0) and the CLI exits 1. To test the hooks the way a user gets them, bump `version`, run `/plugin update` and `/reload-plugins` so the copy in the cache is the one that runs.
 
 ## Skills
 
@@ -167,7 +170,7 @@ The `sha256` stamp pins the content of the base rulebook the project was calibra
 
 ### Opt-in gate and kill switch
 
-`scripts/run.sh` is the single entry point for the CLI and for the plugin hooks (hooks ship in a later version). In hook mode (`--hook`) it decides in pure shell, before starting any runtime:
+`scripts/run.sh` is the single entry point for the CLI and for the plugin hooks. In hook mode (`--hook <name>`) it decides in pure shell, before starting any runtime:
 
 1. no `.claude/rulebook.yaml` in `$CLAUDE_PROJECT_DIR` and no `NESTJS_HEXAGONAL_RULEBOOK` pointing at an existing file: exit 0 with no output (the plugin is inert for projects that did not opt in);
 2. `NESTJS_HEXAGONAL_DISABLE=1`: exit 0 (kill switch, also honoured by the CLI);
@@ -175,15 +178,47 @@ The `sha256` stamp pins the content of the base rulebook the project was calibra
 4. the project's own `node_modules/.bin/nestjs-hexagonal-check` is preferred when present, so the version pinned in the project's lockfile is the one that runs; otherwise the plugin's `scripts/check.ts`;
 5. missing `node_modules` (plugin loaded in place, or a failed install): an actionable message on stderr and exit 0 in hook mode, exit 1 in CLI mode.
 
-The runtime is `bun`; when it is absent the script falls back to `node --experimental-strip-types`.
+The runtime is `bun`; when it is absent the script falls back to `node --experimental-strip-types`. In hook mode the script then runs `scripts/hooks/<name>.ts` with stdin forwarded; the JSONL log records which copy ran (`binarySource: node_modules | plugin-root`).
+
+### Hooks
+
+`hooks/hooks.json` subscribes to four events. Every handler goes through `run.sh --hook <name>`, so the opt-in gate, the path containment, the single execution source and the fail-open above apply to all of them; that gate is the whole opt-in mechanism (see [Disclosure](#disclosure) for why the manifest does not use `defaultEnabled`). **In this version only a static FAIL blocks anything**; semantic answers are advisory text, and nothing blocks on `uncertain` or `uncalibrated`.
+
+| Hook | Fires for | What it does | Output | Budget |
+|---|---|---|---|---|
+| `SubagentStart` `^nestjs-hexagonal:.*` | plugin subagents | records the session start (HEAD sha, timestamp) and injects the slice of the composed rulebook for the agent's layer: rule ids, titles, severity, the `fix` of FAIL rules | `additionalContext` (at most 1,500 tokens) | 300 ms, no network |
+| `PreToolUse` `Write\|Edit` | plugin subagents, path inside the project and inside the scope of a static rule | computes the content the call would produce (Edit applies `old_string` to `new_string`, honouring `replace_all`), runs the static rules that need only that file (the two project-wide `external` checks run later) and keeps only the findings the current file does not already have | new static FAIL: `permissionDecision: deny` with rule id, evidence and fix (3 findings at most); new WARN: `additionalContext` with no permission decision; nothing new: silent | p95 1.5 s, no network |
+| `PostToolUse` `Write\|Edit` | any agent | records the path per `agent_id`; static rules for everyone; semantic rules only for a plugin subagent with a key, under a 13 s deadline; `additionalContext` only when there is a finding, capped at 8 KB per agent and session (then a one-line notice) | `additionalContext` | p95 2 s, hook timeout 15 s |
+| `SubagentStop` (the six pipeline agents) | plugin subagents | touched files = paths recorded in the session store plus `git diff --name-only` and untracked files since the recorded HEAD, minus the files that were already dirty when the agent started (baseline recorded at SubagentStart); full static run on them; a static FAIL blocks at once with `decision: block` and a `reason` listing only files this agent touched, and Jev is never called on that path; on a clean stop the semantic advisory runs (key present, at most 8 concurrent requests, deadline 17 s) and is stored for the parent; the block counter lives in the session store and after 2 blocks the agent is released with a `systemMessage` listing the unresolved FAILs | `{ decision: "block", reason }`, or silent | 20 s (hook timeout); the blocking path needs no network |
+| `PostToolUse` `Agent` | parent of a completed plugin subagent | reads the residual report of that `agentId` from the session store and returns the unresolved FAILs and the semantic advisory of the last clean stop to the orchestrator | `additionalContext` | 200 ms |
+
+Why release after 2 blocks: Claude Code ends a subagent after 8 consecutive stop-hook blocks, and the `reason` becomes the subagent's next instruction. An agent that cannot satisfy a rule would otherwise burn the whole budget; releasing earlier keeps the unresolved list visible to the parent through the `Agent` hook. `stop_hook_active` is ignored for the counter because it is already `true` on the first continuation. Note that as of Claude Code v2.1.198 subagents run in the background by default, in which case the `Agent` PostToolUse hook fires at launch (`status: async_launched`) and stays silent; the release message still reaches the user as a `systemMessage`.
+
+State lives under `$CLAUDE_PLUGIN_DATA` (`~/.claude/plugins/data/<id>/`; when the variable is absent the hooks use the marketplace install directory if it exists, else a temp directory): `sessions/<session_id>/<agent_id>.json` (touched paths, block counter, advisory bytes, unresolved findings; written atomically with a lock and garbage-collected after 24 h), `logs/hooks-YYYYMMDD.jsonl` (one line per decision: event, agent type, tool, path relative to the project, rule ids, decision, latency, `binarySource`, plugin version, semantic counters; never code nor the key) and the Jev cache, log and circuit breaker described below. `nestjs-hexagonal-check export-logs --since 2026-09-14 --out weekly.json` aggregates the log: entries, p50/p95 latency per hook, decisions by kind, binary sources, uncertain and uncalibrated rates. A terminal does not receive `CLAUDE_PLUGIN_DATA`, so the command defaults to `~/.claude/plugins/data/nestjs-hexagonal-softtor-nestjs-hexagonal/` (the marketplace install) and accepts `--data-dir` for any other location.
+
+### Disclosure
+
+- **What is sent:** with a key present, one request per file and state slice containing the rule preamble, the file path, the layer, the slice name and the code of that slice plus the rulebook questions. The whole file is sent only when a rule declares `slice: file`. The key travels in the `Authorization` header and never appears in a hook output, a reason, the JSONL log or the cache; the hooks refuse to print any output that would contain the key or a raw file body.
+- **When:** only if all three hold: the project opted in with `.claude/rulebook.yaml` (or `NESTJS_HEXAGONAL_RULEBOOK`), the hook fires inside a plugin subagent (`agent_type` prefixed `nestjs-hexagonal:`, with an `agent_id`), and a key is configured. `PreToolUse` and `SubagentStart` never use the network. Static rules run offline for every agent.
+- **To whom:** `https://api.typesafe.ai/v1/systemone`. TypeSafe states it does not train on customer data; zero data retention is only available under an enterprise contract. Treat the code you check as shared with that provider.
+- **How to disable:** `NESTJS_HEXAGONAL_DISABLE=1` (everything), remove the project rulebook (all hooks stay silent), or remove the key (static only).
+- **Opt-in is per project, not per install.** The only gate is the one in `run.sh`: a project without `.claude/rulebook.yaml` (or `NESTJS_HEXAGONAL_RULEBOOK`) never runs a hook, whatever the plugin state. The manifest deliberately does not set `defaultEnabled: false`: with that field Claude Code 2.1.278 reads `hooks/hooks.json` but registers neither the hooks nor the plugin agents (`create-subdomain` fails with "Agent type 'nestjs-hexagonal:domain-agent' not found"), so the field would disable the plugin instead of deferring its activation.
+
+### Onboarding another project
+
+1. Create `.claude/rulebook.yaml` extending `hexagonal` (and `softtor-conventions` only if multi-tenant scoping, no emoji and English identifiers are conventions of that project), stamping each base with `sha256sum rulebooks/<id>.rulebook.yaml` of the installed copy.
+2. Set the key, if semantic rules are wanted: answer the `TYPESAFE_API_KEY` prompt when enabling the plugin (stored in the keychain, exported to the hooks as `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY`) or export `TYPESAFE_API_KEY` in the shell. The option is read first.
+3. Pin the CLI in the project so the hooks and the CI run the same version: `bun add -d github:Softtor/nestjs-hexagonal#vX.Y.Z`. The hooks prefer `node_modules/.bin/nestjs-hexagonal-check` when it exists.
+4. Run `bunx nestjs-hexagonal-check --files 'src/**/*.ts' --strict` once to see the baseline, and add it to lint-staged or CI.
+5. Optional: `NESTJS_HEXAGONAL_RULEBOOK` in `.claude/settings.json` `env` when the rulebook lives elsewhere.
 
 ### Semantic checks (Jev)
 
 Five rules of the `hexagonal` rulebook are `semantic`: `hex/handler-no-business-rules`, `hex/port-no-infra-leak`, `hex/entity-not-anemic`, `hex/controller-thin` and `hex/no-overengineering`. They are questions that a regex cannot answer, so the CLI asks Jev (`jev-1.13.0`, pinned in the rulebook) and turns the probability into a decision.
 
-- **Enable:** export `TYPESAFE_API_KEY` and pass `--classes static,semantic`. Without the key the semantic rules are skipped with a one-line notice and the exit code is 0; the static rules keep working offline.
+- **Enable:** export `TYPESAFE_API_KEY` (or answer the plugin's `TYPESAFE_API_KEY` prompt, which the CLI reads as `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY`) and pass `--classes static,semantic`. Without the key the semantic rules are skipped with a one-line notice and the exit code is 0; the static rules keep working offline.
 - **What is sent:** one request per file and state slice, containing the rule preamble, the file path, the layer, the slice name and the code of that slice (the enclosing declaration of the change for handlers and controllers, the whole file for ports, entities and the over-engineering question) plus the rulebook questions. The whole file is sent only when the rule declares `slice: file`. The key travels in the `Authorization` header and never appears in the output, the JSONL log or the cache.
-- **When:** only on an explicit `--classes semantic` run. The plugin hooks (a later version) will add the same gate: project opted in with a rulebook, plugin subagent, key present.
+- **When:** on an explicit `--classes semantic` run, and in the `PostToolUse` and `SubagentStop` hooks under the gate described in [Disclosure](#disclosure): project opted in with a rulebook, plugin subagent, key present.
 - **To whom:** `https://api.typesafe.ai/v1/systemone`. TypeSafe states it does not train on customer data; zero data retention is only available under an enterprise contract (`privacy@typesafe.ai`). Treat the code you check as shared with that provider.
 - **Local state:** with `CLAUDE_PLUGIN_DATA` set, answers are cached under `$CLAUDE_PLUGIN_DATA/cache` (keyed by state, questions, model pin and rulebook version), one JSONL line per call is appended to `$CLAUDE_PLUGIN_DATA/jev.jsonl` (rule ids, answer values, model, latency, tokens, decision; never the code nor the key) and a circuit breaker in `breaker.json` opens for five minutes after three failures in two minutes.
 - **Decisions:** `deny`, `ask`, `advise`, `pass`, `uncertain` (noul probability inside the abstention band, or choice/score confidence below `minConfidence`) and `uncalibrated` (the response model differs from the pin, or a base rulebook sha256 stamp does not match). `deny` requires fitted thresholds in `calibration/fitted/<pin>.json`, produced by the calibration harness from at least 30 good and 30 bad golden cases with precision >= 0.95; without them a rule yields at most `ask` and every finding is marked `calibrated: false`. `--strict` fails only on static FAIL and semantic `deny`.

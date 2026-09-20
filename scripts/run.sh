@@ -2,8 +2,8 @@
 # Entry point for the nestjs-hexagonal-check CLI and for the plugin hooks.
 # Pure shell until the gate decides that a runtime is needed.
 #
-#   run.sh --hook <name> [args]   hook mode: opt-in gate, path containment,
-#                                 then check.ts --hook <name> with stdin forwarded
+#   run.sh --hook <name>          hook mode: opt-in gate, path containment,
+#                                 then scripts/hooks/<name>.ts with stdin forwarded
 #   run.sh [args]                 CLI mode: forwards to check.ts
 
 set -u
@@ -34,8 +34,17 @@ self_script=$(real_path "$0")
 self_root=$(real_dir "$(dirname "$self_script")/..")
 
 hook_mode=0
+hook_name=""
 if [ "${1:-}" = "--hook" ]; then
   hook_mode=1
+  hook_name=${2:-}
+  case $hook_name in
+    subagent-start|pre-tool-use|post-tool-use|subagent-stop|agent-post-tool-use) ;;
+    *)
+      echo "nestjs-hexagonal-check: unknown hook '$hook_name' (skipping)" >&2
+      exit 0
+      ;;
+  esac
 fi
 
 if [ "${NESTJS_HEXAGONAL_DISABLE:-}" = "1" ]; then
@@ -92,8 +101,14 @@ if [ -x "$project_bin" ] && [ "$(real_path "$project_bin")" != "$self_script" ];
   exec "$project_bin" "$@"
 fi
 
-export NESTJS_HEXAGONAL_BINARY_SOURCE=plugin-root
-check_script="$self_root/scripts/check.ts"
+# An installed copy execs this script with the source already set by the caller.
+export NESTJS_HEXAGONAL_BINARY_SOURCE="${NESTJS_HEXAGONAL_BINARY_SOURCE:-plugin-root}"
+if [ "$hook_mode" -eq 1 ]; then
+  check_script="$self_root/scripts/hooks/$hook_name.ts"
+  set --
+else
+  check_script="$self_root/scripts/check.ts"
+fi
 
 deps_found=0
 probe_dir=$self_root

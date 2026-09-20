@@ -20,7 +20,17 @@ Compatible with GSD workflow.
 
 ## Rulebook (machine-readable rules)
 
-`rulebooks/hexagonal.rulebook.yaml` encodes the rules above; `scripts/check.ts` (entry `scripts/run.sh`, bin `nestjs-hexagonal-check`) runs the static ones offline and, with `--classes semantic` and `TYPESAFE_API_KEY`, asks Jev the semantic ones (`scripts/lib/{jev-client,state-builder,decide,semantic-engine}.ts`). Runtime rules are still inert. Projects opt in with `.claude/rulebook.yaml` (`extends` with sha256 stamps, own rules, overrides by id); `NESTJS_HEXAGONAL_DISABLE=1` turns everything off.
+`rulebooks/hexagonal.rulebook.yaml` encodes the rules above; `scripts/check.ts` (entry `scripts/run.sh`, bin `nestjs-hexagonal-check`) runs the static ones offline and, with `--classes semantic` and `TYPESAFE_API_KEY`, asks Jev the semantic ones (`scripts/lib/{jev-client,state-builder,decide,semantic-engine}.ts`). Runtime rules are still inert. Projects opt in with `.claude/rulebook.yaml` (`extends` with sha256 stamps, own rules, overrides by id); `NESTJS_HEXAGONAL_DISABLE=1` turns everything off. The same rulebook drives the hooks in `hooks/hooks.json` (`scripts/hooks/*.ts`, shared code in `scripts/hooks/lib/`, state in `scripts/lib/session-store.ts`, log in `scripts/lib/hook-log.ts`).
+
+| Hook | Matcher | Gate | Effect (v1) |
+|---|---|---|---|
+| `SubagentStart` | `^nestjs-hexagonal:.*` | opt-in project, plugin agent | rulebook slice of the agent's layer as `additionalContext` (<= 1,500 tokens); records HEAD sha and start time |
+| `PreToolUse` | `Write\|Edit` | plugin agent, path in project and in a static scope | only findings the current file does not already have: new static FAIL -> `permissionDecision: deny` (3 findings max); new WARN -> `additionalContext`, no permission decision; no network, no `external` checks |
+| `PostToolUse` | `Write\|Edit` | any agent (path recorded per `agent_id`) | static for all; semantic only for plugin agent with key; `additionalContext` only with findings, 8 KB cap per agent and session |
+| `SubagentStop` | the six pipeline agents | plugin agent | files = store paths + (`git diff`/untracked since start minus the baseline recorded at start); static FAIL -> `decision: block` at once, no Jev; clean stop -> semantic advisory under a 17 s deadline stored for the Agent hook; after 2 blocks -> release with `systemMessage` |
+| `PostToolUse` | `Agent` | completed plugin subagent | unresolved FAILs and the last semantic advisory of that `agentId` from the store as `additionalContext` |
+
+Every hook runs through `scripts/run.sh --hook <name>`, exits 0 whatever happens, never prints the key or a raw file body, and appends one line to `$CLAUDE_PLUGIN_DATA/logs/hooks-YYYYMMDD.jsonl` (`check.ts export-logs --since <date>` aggregates it). The key comes from `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY` (plugin `userConfig`) or `TYPESAFE_API_KEY`. Opt-in is exclusively the `run.sh` gate (project `.claude/rulebook.yaml` or `NESTJS_HEXAGONAL_RULEBOOK`): never add `defaultEnabled: false` to `plugin.json`, because Claude Code 2.1.278 then reads `hooks.json` but registers neither hooks nor agents (`scripts/__tests__/hooks/plugin-manifest.spec.ts` guards this).
 
 Semantic decisions (`scripts/lib/decide.ts`), per rule and per answer:
 

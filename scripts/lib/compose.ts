@@ -27,7 +27,10 @@ export type BaseResolver = (id: string) => ResolvedBase | null;
 export interface ComposedRulebook {
   rulebook: Rulebook;
   rules: Rule[];
+  /** rule id -> id of the rulebook that declares it */
   sources: Record<string, string>;
+  /** rulebook id -> version of the copy that was composed */
+  versions: Record<string, string>;
   warnings: string[];
   uncalibrated: boolean;
 }
@@ -42,11 +45,13 @@ function collectRules(
   visiting: Set<string>,
   collected: Map<string, string>,
   warnings: string[],
+  versions: Record<string, string>,
 ): { rules: Rule[]; sources: Record<string, string> } {
   if (visiting.has(rulebook.id)) {
     throw new RulebookCompositionError(`extends cycle detected at rulebook '${rulebook.id}'`);
   }
   visiting.add(rulebook.id);
+  versions[rulebook.id] = rulebook.version;
 
   const rules: Rule[] = [];
   const sources: Record<string, string> = {};
@@ -69,7 +74,7 @@ function collectRules(
         `rulebook-mismatch for '${entry.id}': expected ${entry.version}@${entry.sha256.slice(0, 8)}, found ${base.rulebook.version}@${base.sha256.slice(0, 8)} (${base.path}); decisions are uncalibrated`,
       );
     }
-    const inherited = collectRules(base.rulebook, resolve, visiting, collected, warnings);
+    const inherited = collectRules(base.rulebook, resolve, visiting, collected, warnings, versions);
     for (const rule of inherited.rules) {
       if (sources[rule.id] !== undefined) {
         throw new RulebookCompositionError(
@@ -143,7 +148,8 @@ function applyOverride(rule: Rule, override: Override): Rule | null {
 
 export function composeRulebook(rulebook: Rulebook, resolve: BaseResolver): ComposedRulebook {
   const warnings: string[] = [];
-  const collected = collectRules(rulebook, resolve, new Set(), new Map(), warnings);
+  const versions: Record<string, string> = {};
+  const collected = collectRules(rulebook, resolve, new Set(), new Map(), warnings, versions);
   const byId = new Map(collected.rules.map((rule) => [rule.id, rule]));
 
   for (const override of rulebook.overrides) {
@@ -169,9 +175,29 @@ export function composeRulebook(rulebook: Rulebook, resolve: BaseResolver): Comp
     rulebook,
     rules,
     sources,
+    versions,
     warnings,
     uncalibrated: warnings.some((warning) => warning.startsWith('rulebook-mismatch')),
   };
+}
+
+/**
+ * Version the fitted thresholds must be compared against: the version of the
+ * rulebook that declares the semantic rules (a project rulebook that only
+ * extends a base keeps the base calibration). When semantic rules come from
+ * more than one rulebook, the project version is used and the fitted file is
+ * expected to be regenerated for that composition.
+ */
+export function semanticRulebookVersion(composed: ComposedRulebook): string {
+  const sources = new Set(composed.rules.filter((rule) => rule.class === 'semantic').map((rule) => composed.sources[rule.id]));
+  if (sources.size === 1) {
+    const [source] = sources;
+    const version = source === undefined ? undefined : composed.versions[source];
+    if (version !== undefined) {
+      return version;
+    }
+  }
+  return composed.rulebook.version;
 }
 
 export function readRulebookFile(path: string): { rulebook: Rulebook; text: string } {

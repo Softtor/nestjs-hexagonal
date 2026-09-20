@@ -297,11 +297,6 @@ describe('runCli', () => {
     expect(rule?.check?.kind === 'regex' && rule.check.flags.includes('i')).toBe(false);
   });
 
-  it('treats --hook as a no-op in this version', async () => {
-    const { code, io } = await run(['--hook', 'pre-tool-use']);
-    expect(code).toBe(0);
-    expect(io.out.join('')).toBe('');
-  });
 
   it('project.example stamps match the shipped base rulebooks', async () => {
     const { report } = await runJson(['--project-rulebook', 'rulebooks/project.example.rulebook.yaml', '--files', 'examples/**/*.ts']);
@@ -359,6 +354,16 @@ describe('runCli --classes semantic', () => {
     expect(report.findings).toEqual([]);
     expect(asSemanticReport(report).semantic?.skippedReason).toContain('TYPESAFE_API_KEY');
     assertNetworkForbidden();
+  });
+
+  it('reads the plugin option before the environment key and treats an empty key as absent', async () => {
+    const calls: string[] = [];
+    const { code, io } = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic'], { CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY: 'sk-from-option', TYPESAFE_API_KEY: '' }, PLUGIN_ROOT, cannedFetch(noulOrNone(0.1), calls));
+    expect(code).toBe(0);
+    expect(io.err.join('')).not.toContain('TYPESAFE_API_KEY is not set');
+    expect(calls.length).toBeGreaterThan(0);
+    const empty = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic'], { CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY: '', TYPESAFE_API_KEY: '' });
+    expect(empty.io.err.join('')).toContain('TYPESAFE_API_KEY is not set');
   });
 
   it('does nothing when NESTJS_HEXAGONAL_DISABLE=1', async () => {

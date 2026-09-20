@@ -1,19 +1,16 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import {
-  RulebookCompositionError,
-  composeRulebook,
-  createDirectoryResolver,
-  readRulebookFile,
-  rulebookPathForId,
-  type ComposedRulebook,
-} from './lib/compose.ts';
+import { apiKey as resolveApiKey } from './lib/api-key.ts';
+import { RulebookCompositionError, semanticRulebookVersion, type ComposedRulebook } from './lib/compose.ts';
 import { FittedFileError, loadFitted, type FittedFile } from './lib/decide.ts';
-import { registerBuiltinExecutors } from './lib/executors/index.ts';
+import { readHookLogs, summarizeHookLogs } from './lib/hook-log.ts';
 import { createJevClient, type FetchLike } from './lib/jev-client.ts';
+import { changedFilesSince, projectSources, readSources } from './lib/project-files.ts';
+import { RulebookNotFoundError, loadProjectRulebook } from './lib/project-rulebook.ts';
 import { matchGlob, normalizePath } from './lib/scope.ts';
+import { MARKETPLACE_DATA_ID, resolveDataDir } from './lib/session-store.ts';
 import { explainRequests, planSemanticRequests, runSemanticRules, type SemanticExplain, type SemanticFinding, type Undecided } from './lib/semantic-engine.ts';
 import type { Hunk } from './lib/state-builder.ts';
 import { runStaticRules, type Finding, type SourceFile } from './lib/static-engine.ts';
@@ -42,13 +39,13 @@ interface ParsedArgs {
   strict: boolean;
   failOnUncertain: boolean;
   explain: boolean;
-  hook?: string;
   help: boolean;
 }
 
 class UsageError extends Error {}
 
 const USAGE = `Usage: nestjs-hexagonal-check [options]
+       nestjs-hexagonal-check export-logs --since <date> [--out <file>]
 
   --rulebook <path|id>        rulebook to run; an id resolves to <plugin>/rulebooks/<id>.rulebook.yaml
   --project-rulebook <path>   project rulebook (default: $NESTJS_HEXAGONAL_RULEBOOK or $CLAUDE_PROJECT_DIR/.claude/rulebook.yaml)
@@ -129,9 +126,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
       case '--explain':
         parsed.explain = true;
         break;
-      case '--hook':
-        parsed.hook = argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? argv[++i] : '';
-        break;
       case '--help':
       case '-h':
         parsed.help = true;
@@ -142,45 +136,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
     i += 1;
   }
   return parsed;
-}
-
-function resolveRootRulebook(args: ParsedArgs, options: CliOptions): string {
-  const rulebooksDir = join(options.pluginRoot, 'rulebooks');
-  if (args.rulebook !== undefined) {
-    const asPath = resolve(options.cwd, args.rulebook);
-    if (/\.ya?ml$/.test(args.rulebook) || existsSync(asPath)) {
-      return asPath;
-    }
-    const byId = rulebookPathForId(rulebooksDir, args.rulebook);
-    if (existsSync(byId)) {
-      return byId;
-    }
-    throw new UsageError(`rulebook '${args.rulebook}' is neither a file nor an id under ${rulebooksDir}`);
-  }
-
-  const candidates: Array<{ path: string; origin: string }> = [];
-  if (args.projectRulebook !== undefined) {
-    const path = resolve(options.cwd, args.projectRulebook);
-    if (!existsSync(path)) {
-      throw new UsageError(`--project-rulebook ${args.projectRulebook} does not exist (${path})`);
-    }
-    return path;
-  }
-  const fromEnv = options.env.NESTJS_HEXAGONAL_RULEBOOK;
-  if (fromEnv !== undefined && fromEnv !== '') {
-    candidates.push({ path: resolve(options.cwd, fromEnv), origin: 'NESTJS_HEXAGONAL_RULEBOOK' });
-  }
-  const projectDir = options.env.CLAUDE_PROJECT_DIR ?? options.cwd;
-  candidates.push({ path: join(projectDir, '.claude', 'rulebook.yaml'), origin: '.claude/rulebook.yaml' });
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate.path)) {
-      return candidate.path;
-    }
-  }
-  throw new UsageError(
-    `no rulebook found: pass --rulebook <path|id>, --project-rulebook <path>, set NESTJS_HEXAGONAL_RULEBOOK or create ${join(projectDir, '.claude', 'rulebook.yaml')}`,
-  );
 }
 
 function walk(dir: string, base: string, out: string[]): void {
@@ -232,15 +187,11 @@ function expandGlobs(globs: string[], cwd: string): string[] {
 }
 
 function changedFiles(base: string, cwd: string): string[] {
-  const diff = execFileSync('git', ['diff', '--name-only', '--relative', '--diff-filter=ACMR', base], { cwd, encoding: 'utf8' });
-  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd, encoding: 'utf8' });
-  const paths = `${diff}\n${untracked}`
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .filter((line) => existsSync(resolve(cwd, line)) && statSync(resolve(cwd, line)).isFile())
-    .map((line) => normalizePath(line));
-  return [...new Set(paths)].sort();
+  const files = changedFilesSince(base, cwd);
+  if (files === null) {
+    throw new UsageError(`--diff ${base}: git is unavailable or ${cwd} is not inside a repository`);
+  }
+  return files;
 }
 
 const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
@@ -269,41 +220,6 @@ export function parseUnifiedDiff(diff: string): Record<string, Hunk[]> {
 function changedHunks(base: string, cwd: string): Record<string, Hunk[]> {
   const diff = execFileSync('git', ['diff', '--unified=0', '--no-prefix', '--relative', '--diff-filter=ACMR', base], { cwd, encoding: 'utf8' });
   return parseUnifiedDiff(diff);
-}
-
-const PROJECT_TREE_IGNORED = new Set(['node_modules', '.git', 'dist']);
-const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
-
-function projectRoot(cwd: string): string {
-  try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || cwd;
-  } catch {
-    return cwd;
-  }
-}
-
-function walkTree(dir: string, cwd: string, out: string[]): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (PROJECT_TREE_IGNORED.has(entry.name)) {
-      continue;
-    }
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walkTree(full, cwd, out);
-    } else if (entry.isFile() && SOURCE_EXTENSIONS.some((extension) => entry.name.endsWith(extension))) {
-      out.push(normalizePath(relative(cwd, full)));
-    }
-  }
-}
-
-function projectSources(cwd: string): SourceFile[] {
-  const paths: string[] = [];
-  walkTree(projectRoot(cwd), cwd, paths);
-  return readSources(paths, cwd);
-}
-
-function readSources(paths: string[], cwd: string): SourceFile[] {
-  return paths.map((path) => ({ path, content: readFileSync(resolve(cwd, path), 'utf8') }));
 }
 
 type AnyFinding = Finding | SemanticFinding;
@@ -423,13 +339,13 @@ async function runSemantic(
   if (rules.length === 0) {
     return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, undecided: [] } };
   }
-  const apiKey = options.env.TYPESAFE_API_KEY ?? options.env.CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY;
-  if (apiKey === undefined || apiKey === '') {
+  const apiKey = resolveApiKey(options.env);
+  if (apiKey === undefined) {
     const reason = `TYPESAFE_API_KEY is not set; skipped ${rules.length} semantic rule(s)`;
     io.stderr(`${reason}\n`);
     return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, undecided: [], skippedReason: reason } };
   }
-  const loaded = loadFitted(options.fittedDir ?? join(options.pluginRoot, 'calibration', 'fitted'), pin, composed.rulebook.version);
+  const loaded = loadFitted(options.fittedDir ?? join(options.pluginRoot, 'calibration', 'fitted'), pin, semanticRulebookVersion(composed));
   const fitted: FittedFile | null = loaded.status === 'none' ? null : loaded.fitted;
   const fittedMismatch = loaded.status === 'mismatch' ? loaded.reason : null;
   const client = createJevClient({
@@ -525,7 +441,57 @@ function exitCode(report: Report, args: ParsedArgs): number {
   return args.failOnUncertain && (uncertain || unanswered) ? 3 : 0;
 }
 
+const EXPORT_LOGS_USAGE = `Usage: nestjs-hexagonal-check export-logs --since <date> [--out <file>] [--data-dir <dir>]
+
+  Aggregates the hook decisions logged under <data-dir>/logs/hooks-YYYYMMDD.jsonl
+  since <date> (ISO 8601): entries, p50/p95 latency per hook, decisions by kind,
+  binary sources and semantic uncertain/uncalibrated rates. Writes JSON to --out or stdout.
+  <data-dir> defaults to $CLAUDE_PLUGIN_DATA, then ~/.claude/plugins/data/${MARKETPLACE_DATA_ID}.
+`;
+
+function runExportLogs(argv: string[], io: CliIo, options: CliOptions): number {
+  let since: string | undefined;
+  let out: string | undefined;
+  let dataDir: string | undefined;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    const value = argv[i + 1];
+    if (arg === '--since' && value !== undefined) {
+      since = value;
+      i += 1;
+    } else if (arg === '--out' && value !== undefined) {
+      out = value;
+      i += 1;
+    } else if (arg === '--data-dir' && value !== undefined) {
+      dataDir = resolve(options.cwd, value);
+      i += 1;
+    } else {
+      io.stderr(`unknown option '${arg}'\n${EXPORT_LOGS_USAGE}`);
+      return 2;
+    }
+  }
+  if (since === undefined || Number.isNaN(Date.parse(since))) {
+    io.stderr(`--since <date> is required and must parse as a date\n${EXPORT_LOGS_USAGE}`);
+    return 2;
+  }
+  const sinceDate = new Date(since);
+  const until = new Date();
+  const summary = summarizeHookLogs(readHookLogs(dataDir ?? resolveDataDir(options.env), sinceDate), sinceDate, until);
+  const text = `${JSON.stringify(summary, null, 2)}\n`;
+  if (out === undefined) {
+    io.stdout(text);
+  } else {
+    const target = resolve(options.cwd, out);
+    writeFileSync(target, text);
+    io.stderr(`wrote ${summary.entries} entr${summary.entries === 1 ? 'y' : 'ies'} to ${target}\n`);
+  }
+  return 0;
+}
+
 export async function runCli(argv: string[], io: CliIo, options: CliOptions): Promise<number> {
+  if (argv[0] === 'export-logs') {
+    return runExportLogs(argv.slice(1), io, options);
+  }
   let args: ParsedArgs;
   try {
     args = parseArgs(argv);
@@ -544,16 +510,14 @@ export async function runCli(argv: string[], io: CliIo, options: CliOptions): Pr
     return 0;
   }
 
-  if (args.hook !== undefined) {
-    io.stderr(`hook '${args.hook}' is not implemented in this version\n`);
-    return 0;
-  }
-
   try {
-    const rulebookPath = resolveRootRulebook(args, options);
-    const { rulebook } = readRulebookFile(rulebookPath);
-    registerBuiltinExecutors();
-    const composed = composeRulebook(rulebook, createDirectoryResolver(join(options.pluginRoot, 'rulebooks')));
+    const { path: rulebookPath, composed } = loadProjectRulebook({
+      cwd: options.cwd,
+      env: options.env,
+      pluginRoot: options.pluginRoot,
+      ...(args.rulebook !== undefined ? { rulebook: args.rulebook } : {}),
+      ...(args.projectRulebook !== undefined ? { projectRulebook: args.projectRulebook } : {}),
+    });
 
     if (args.files.length === 0 && args.diff === undefined) {
       throw new UsageError('pass --files <glob...> or --diff <base>');
@@ -572,7 +536,7 @@ export async function runCli(argv: string[], io: CliIo, options: CliOptions): Pr
     io.stdout(args.format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : formatText(report));
     return exitCode(report, args);
   } catch (error) {
-    if (error instanceof UsageError) {
+    if (error instanceof UsageError || error instanceof RulebookNotFoundError) {
       io.stderr(`${error.message}\n${USAGE}`);
       return 2;
     }

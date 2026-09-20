@@ -54,6 +54,15 @@ bun test ./calibration/__tests__                 # regression spec now runs agai
 
 The `calibration` job of `.github/workflows/ci.yml` runs only on push to `main` and on the weekly schedule, with `secrets.TYPESAFE_API_KEY`; it never runs on pull requests (forks do not receive the secret and must not be able to spend it). It uploads `calibration/results` and `calibration/report.md` as workflow artifacts and does not commit; promoting a fitted file is a human decision made in a pull request that includes the results and the report.
 
+## Hook gate verification
+
+The blocking mechanics of the `SubagentStop` hook were verified against the Claude Code docs (`hooks.md`, "Stop decision control" and "SubagentStop"): `{ "decision": "block", "reason": "..." }` on exit 0 keeps the subagent running and delivers `reason` as its next instruction, `stop_hook_active` is `true` on every continuation, Claude Code ends the loop after 8 consecutive blocks, and context for the parent goes through `PostToolUse` on the `Agent` tool. The unit tests cover the JSON contract; the live behaviour is a manual spike the coordinator runs after the PR is merged into a cached copy of the plugin:
+
+1. Create a dummy project with `.claude/rulebook.yaml` extending `hexagonal` (stamp with `sha256sum rulebooks/hexagonal.rulebook.yaml`), `bun install` in the plugin, bump `version`, `/plugin update`, `/reload-plugins`.
+2. Run `nestjs-hexagonal:create-subdomain` for a small aggregate and, in the `domain-agent` prompt, ask for an `@Injectable()` service under `domain/`.
+3. Observe the `PreToolUse` deny (`[plugin:nestjs-hexagonal]` reason with `hex/domain-no-nest-decorators`), then force the file through `Bash` and observe the `SubagentStop` block, the second block and the release `systemMessage` on the third stop.
+4. Export the evidence: `nestjs-hexagonal-check export-logs --since <today> --out calibration/experiments/hooks-spike.json` (add `--data-dir` when the plugin was not installed from the marketplace) and attach it to the pilot report; the p95 of `post-tool-use` is the first number to read, because the two project-wide static checks list the repository through `git ls-files` on every domain or application write.
+
 ## Changing a question
 
 A question change invalidates the calibration of that rule: bump the rulebook `version`, refresh the sha256 stamp in `rulebooks/project.example.rulebook.yaml`, rerun `run.ts` for the rule and refit. The answer cache is keyed by rulebook version, so stale answers are never reused.

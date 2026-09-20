@@ -9,6 +9,15 @@
   "homepage": "https://github.com/softtor/nestjs-hexagonal",
   "repository": "https://github.com/softtor/nestjs-hexagonal",
   "license": "MIT",
+  "userConfig": {
+    "TYPESAFE_API_KEY": {
+      "type": "string",
+      "title": "TypeSafe API key (optional)",
+      "description": "Enables the semantic (Jev) rules in the hooks and the CLI. Leave empty to keep the plugin static-only and offline; the key is read by the hooks as CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY and never written to any output or log.",
+      "sensitive": true,
+      "required": false
+    }
+  },
   "keywords": [
     "nestjs",
     "hexagonal-architecture",
