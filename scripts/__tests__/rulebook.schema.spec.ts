@@ -160,6 +160,13 @@ describe('RuleSchema', () => {
     expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'nope' } }).success).toBe(false);
   });
 
+  it('rejects sticky and indices regex flags', () => {
+    for (const flags of ['y', 'd', 'gy', 'dg']) {
+      expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'regex', pattern: 'x', flags } }).success).toBe(false);
+    }
+    expect(RuleSchema.safeParse({ ...staticRule, check: { kind: 'regex', pattern: 'x', flags: 'gimsu' } }).success).toBe(true);
+  });
+
   it('defaults tags and scope.exclude', () => {
     const parsed = RuleSchema.parse(staticRule);
     expect(parsed.tags).toEqual(['purity']);

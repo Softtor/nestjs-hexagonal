@@ -130,7 +130,7 @@ export interface ImportEntry {
 }
 
 const IMPORT_PATTERN = /\b(?:import|export)\s+(?:type\s+)?(?:[^'";]*?\s+from\s+)?(['"])(?:\s*)\1/g;
-const REQUIRE_PATTERN = /\brequire\s*\(\s*(['"])\s*\1\s*\)/g;
+const REQUIRE_PATTERN = /\b(?:require|import)\s*\(\s*(['"])\s*\1\s*\)/g;
 
 export function extractImports(source: string): ImportEntry[] {
   const masked = maskCommentsAndStrings(source);
@@ -295,7 +295,7 @@ function statementWindow(content: string, index: number): DeclarationRange {
 
 function runLineCount(rule: Rule, check: Extract<Check, { kind: 'line-count' }>, file: SourceFile): Finding[] {
   if (check.selector === 'file') {
-    const lines = file.content.split('\n').length;
+    const lines = file.content === '' ? 0 : file.content.replace(/\n$/, '').split('\n').length;
     return lines > check.max ? [finding(rule, file.path, `file spans ${lines} lines (max ${check.max})`, 1)] : [];
   }
 

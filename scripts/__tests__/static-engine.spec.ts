@@ -67,6 +67,11 @@ describe('extractImports', () => {
     ]);
     expect(imports[1]?.line).toBe(2);
   });
+
+  it('finds dynamic and typeof imports', () => {
+    const source = "const mod = await import('@nestjs/common');\ntype Prisma = typeof import('@prisma/client');\nimport('./side');\n";
+    expect(extractImports(source).map((entry) => `${entry.specifier}@${entry.line}`)).toEqual(['@nestjs/common@1', '@prisma/client@2', './side@3']);
+  });
 });
 
 describe('regex check', () => {
@@ -219,6 +224,13 @@ describe('line-count check', () => {
     const whole = makeRule({ check: { kind: 'line-count', selector: 'file', max: 2 } });
     expect(runStaticRules([whole], [file('f.ts', 'a\nb\nc')]).findings).toHaveLength(1);
     expect(runStaticRules([whole], [file('f.ts', 'a\nb')]).findings).toHaveLength(0);
+  });
+
+  it('does not count the trailing newline as a line for the file selector', () => {
+    const whole = makeRule({ check: { kind: 'line-count', selector: 'file', max: 2 } });
+    expect(runStaticRules([whole], [file('f.ts', 'a\nb\n')]).findings).toHaveLength(0);
+    expect(runStaticRules([whole], [file('f.ts', 'a\nb\nc\n')]).findings).toHaveLength(1);
+    expect(runStaticRules([whole], [file('f.ts', '')]).findings).toHaveLength(0);
   });
 });
 

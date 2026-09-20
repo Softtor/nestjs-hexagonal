@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const RULEBOOK_SCHEMA_ID = 'nestjs-hexagonal/rulebook@1';
 
 const RULE_ID_PATTERN = /^[a-z0-9-]+\/[a-z0-9-]+$/;
-const REGEX_FLAGS_PATTERN = /^[dgimsuvy]*$/;
+const REGEX_FLAGS_PATTERN = /^[gimsuv]*$/;
 
 function isValidRegex(pattern: string, flags: string): boolean {
   try {

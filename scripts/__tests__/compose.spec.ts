@@ -108,6 +108,24 @@ describe('composeRulebook', () => {
     expect(composed.rules.map((r) => r.id)).toEqual(['hex/a', 'hex/b', 'mid/m']);
   });
 
+  it('deduplicates a base reached twice through a diamond instead of colliding', () => {
+    const dText = 'd';
+    const d = book('d', [rule('d/x')]);
+    const bText = 'b';
+    const b = book('b', [rule('b/y')], { extends: [{ id: 'd', version: '1.0.0', sha256: sha256(dText) }] });
+    const cText = 'c';
+    const c = book('c', [rule('c/z')], { extends: [{ id: 'd', version: '1.0.0', sha256: sha256(dText) }] });
+    const a = book('a', [], {
+      extends: [
+        { id: 'b', version: '1.0.0', sha256: sha256(bText) },
+        { id: 'c', version: '1.0.0', sha256: sha256(cText) },
+      ],
+    });
+    const composed = composeRulebook(a, resolver({ b: { rulebook: b, text: bText }, c: { rulebook: c, text: cText }, d: { rulebook: d, text: dText } }));
+    expect(composed.rules.map((r) => r.id)).toEqual(['d/x', 'b/y', 'c/z']);
+    expect(composed.uncalibrated).toBe(false);
+  });
+
   it('applies overrides: disabled, severity, scope merge, thresholds field-merge', () => {
     const semanticBase = book('sem', [
       rule('hex/s', {
