@@ -1,7 +1,7 @@
 import './helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
-import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -181,5 +181,32 @@ describe('run.sh CLI mode', () => {
     expect(result.status).toBe(0);
     const parsed: unknown = JSON.parse(result.stdout);
     expect(typeof parsed === 'object' && parsed !== null && 'findings' in parsed).toBe(true);
+  });
+});
+
+describe('run.sh installed as a hoisted dev dependency', () => {
+  it('runs through bunx with dependencies hoisted to the project node_modules', () => {
+    const packDir = mkdtempSync(join(tmpdir(), 'hex-pack-'));
+    execFileSync('bun', ['pm', 'pack', '--destination', packDir], { cwd: PLUGIN_ROOT, stdio: 'pipe' });
+    const tgz = readdirSync(packDir).find((entry) => entry.endsWith('.tgz'));
+    if (tgz === undefined) {
+      throw new Error('bun pm pack produced no tarball');
+    }
+    const project = mkdtempSync(join(tmpdir(), 'hex-consumer-'));
+    writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'consumer', version: '0.0.0', type: 'module' }));
+    mkdirSync(join(project, 'src', 'orders', 'domain'), { recursive: true });
+    writeFileSync(join(project, 'src', 'orders', 'domain', 'order.service.ts'), "import { Injectable } from '@nestjs/common';\n");
+    execFileSync('bun', ['add', '-d', join(packDir, tgz)], { cwd: project, stdio: 'pipe' });
+    expect(existsSync(join(project, 'node_modules', 'zod'))).toBe(true);
+    expect(existsSync(join(project, 'node_modules', 'nestjs-hexagonal', 'node_modules', 'zod'))).toBe(false);
+
+    const result = spawnSync('bunx', ['nestjs-hexagonal-check', '--rulebook', 'hexagonal', '--files', 'src/**/*.ts', '--strict'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
+    });
+    expect(result.stderr).not.toContain('dependencies missing');
+    expect(result.stdout).toContain('hex/domain-no-nest-decorators');
+    expect(result.status).toBe(1);
   });
 });
