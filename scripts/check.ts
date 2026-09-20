@@ -10,7 +10,7 @@ import {
   rulebookPathForId,
   type ComposedRulebook,
 } from './lib/compose.ts';
-import { loadFitted } from './lib/decide.ts';
+import { FittedFileError, loadFitted, type FittedFile } from './lib/decide.ts';
 import { registerBuiltinExecutors } from './lib/executors/index.ts';
 import { createJevClient, type FetchLike } from './lib/jev-client.ts';
 import { matchGlob, normalizePath } from './lib/scope.ts';
@@ -429,7 +429,9 @@ async function runSemantic(
     io.stderr(`${reason}\n`);
     return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, undecided: [], skippedReason: reason } };
   }
-  const fitted = loadFitted(options.fittedDir ?? join(options.pluginRoot, 'calibration', 'fitted'), pin);
+  const loaded = loadFitted(options.fittedDir ?? join(options.pluginRoot, 'calibration', 'fitted'), pin, composed.rulebook.version);
+  const fitted: FittedFile | null = loaded.status === 'none' ? null : loaded.fitted;
+  const fittedMismatch = loaded.status === 'mismatch' ? loaded.reason : null;
   const client = createJevClient({
     apiKey,
     pin,
@@ -438,8 +440,11 @@ async function runSemantic(
     ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     ...pluginDataPaths(options.env),
   });
-  const result = await runSemanticRules(rules, files, { client, fitted, uncalibrated: composed.uncalibrated, hunksByPath });
+  const result = await runSemanticRules(rules, files, { client, fitted, uncalibrated: composed.uncalibrated || fittedMismatch !== null, hunksByPath });
   const warnings = [...result.warnings];
+  if (fittedMismatch !== null) {
+    warnings.push(`fitted-mismatch for ${pin}: ${fittedMismatch}; semantic decisions are uncalibrated and never deny`);
+  }
   if (fitted === null) {
     warnings.push(`no fitted thresholds for ${pin} (calibration/fitted/${pin}.json); semantic decisions are advisory and never deny`);
   }
@@ -571,7 +576,7 @@ export async function runCli(argv: string[], io: CliIo, options: CliOptions): Pr
       io.stderr(`${error.message}\n${USAGE}`);
       return 2;
     }
-    if (error instanceof RulebookCompositionError) {
+    if (error instanceof RulebookCompositionError || error instanceof FittedFileError) {
       io.stderr(`${error.message}\n`);
       return 2;
     }

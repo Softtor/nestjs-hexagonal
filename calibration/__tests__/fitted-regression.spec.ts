@@ -17,7 +17,8 @@ const hasResults = existsSync(RESULTS_DIR);
 
 describe.skipIf(!hasResults)(`fitted regression for ${PIN}`, () => {
   const resultsByRule = hasResults ? readAllResults(RESULTS_DIR) : new Map<string, ResultRecord[]>();
-  const fitted = hasResults ? loadFitted(FITTED_DIR, PIN) : null;
+  const loaded = hasResults ? loadFitted(FITTED_DIR, PIN, rulebook.version) : { status: 'none' as const };
+  const fitted = loaded.status === 'none' ? null : loaded.fitted;
 
   it('has results for at least one rule', () => {
     expect(resultsByRule.size).toBeGreaterThan(0);
@@ -34,6 +35,7 @@ describe.skipIf(!hasResults)(`fitted regression for ${PIN}`, () => {
     if (fitted === null) {
       return;
     }
+    expect(loaded.status).toBe('ok');
     expect(fitted.pin).toBe(PIN);
     for (const [ruleId, thresholds] of Object.entries(fitted.rules)) {
       if (thresholds.deny === undefined) {

@@ -443,6 +443,28 @@ describe('runCli with fitted thresholds', () => {
   });
 });
 
+describe('runCli with a fitted file that does not match', () => {
+  const handler = 'examples/order-bounded-context/application/commands/cancel-order.handler.ts';
+
+  it('turns every outcome into uncalibrated with a warning when the fitted pin differs', async () => {
+    const fittedDir = mkdtempSync(join(tmpdir(), 'fitted-'));
+    writeFileSync(join(fittedDir, 'jev-1.13.0.json'), JSON.stringify({ pin: 'jev-1.12.0', generatedAt: 'now', rulebookVersion: '1.3.0', rules: { 'hex/handler-no-business-rules': { advise: 0.7, ask: 0.85 } } }));
+    const { code, report } = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic', '--strict'], { TYPESAFE_API_KEY: SEMANTIC_KEY }, PLUGIN_ROOT, cannedFetch(noulOrNone(0.99)), fittedDir);
+    expect(code).toBe(0);
+    expect(asSemanticReport(report).findings[0]).toMatchObject({ decision: 'uncalibrated' });
+    expect(report.warnings.some((warning) => warning.includes('fitted-mismatch'))).toBe(true);
+  });
+
+  it('exits 2 with a clean message on a malformed fitted file', async () => {
+    const fittedDir = mkdtempSync(join(tmpdir(), 'fitted-'));
+    writeFileSync(join(fittedDir, 'jev-1.13.0.json'), '{ broken');
+    const { code, io } = await run(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic'], { TYPESAFE_API_KEY: SEMANTIC_KEY }, PLUGIN_ROOT, cannedFetch(noulOrNone(0.5)), fittedDir);
+    expect(code).toBe(2);
+    expect(io.err.join('')).toContain('invalid fitted thresholds');
+    expect(io.out).toEqual([]);
+  });
+});
+
 describe('parseUnifiedDiff', () => {
   it('maps new-side hunk ranges by path', () => {
     const diff = ['diff --git src/a.ts src/a.ts', '--- src/a.ts', '+++ src/a.ts', '@@ -3,0 +4,2 @@', '+x', '+y', '@@ -10 +12 @@', '+z', 'diff --git src/b.ts src/b.ts', '--- src/b.ts', '+++ /dev/null', '@@ -1,3 +0,0 @@'].join('\n');

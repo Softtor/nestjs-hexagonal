@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { decide, loadFitted, parseFitted, type FittedThresholds } from '../lib/decide.ts';
+import { FittedFileError, decide, loadFitted, parseFitted, type FittedThresholds } from '../lib/decide.ts';
 import { RuleSchema, type Rule } from '../lib/rulebook.schema.ts';
 import type { JevAnswer } from '../lib/jev-client.ts';
 
@@ -93,11 +93,12 @@ describe('decide for noul rules', () => {
     expect(outcome.value).toBe(0.97);
   });
 
-  it('p=0.97 without fitted thresholds is at most ask and not calibrated, even when the rulebook declares deny', () => {
-    const rule = noulRule({ deny: 0.9, ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } });
+  it('p=0.97 without fitted thresholds is at most ask and not calibrated; a rulebook cannot even declare deny', () => {
+    const rule = noulRule({ ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } });
     const outcome = decide(rule, noul(0.97));
     expect(outcome.decision).toBe('ask');
     expect(outcome.calibrated).toBe(false);
+    expect(() => noulRule({ deny: 0.9, ask: 0.75, advise: 0.55, uncertain: { lo: 0.35, hi: 0.65 } })).toThrow(/deny is not allowed in a rulebook/);
   });
 
   it('p=0.97 with only rulebook advise is advise', () => {
@@ -150,9 +151,10 @@ describe('decide for choice and score rules', () => {
     expect(decide(choiceRule(), choice({ none: 0.95, other: 0.05 }, 0.95)).decision).toBe('pass');
   });
 
-  it('a choice rule never denies without fitted thresholds even with deny in the rulebook', () => {
-    const rule = choiceRule({ deny: 0.6, ask: 0.55, advise: 0.5, minConfidence: 0.5 });
+  it('a choice rule never denies without fitted thresholds and rejects deny in the rulebook', () => {
+    const rule = choiceRule({ ask: 0.55, advise: 0.5, minConfidence: 0.5 });
     expect(decide(rule, choice({ 'bad-a': 0.9, none: 0.1 }, 0.9)).decision).toBe('ask');
+    expect(() => choiceRule({ deny: 0.6, ask: 0.55, advise: 0.5, minConfidence: 0.5 })).toThrow(/deny is not allowed in a rulebook/);
   });
 
   it('score uses the probability mass on violating levels by index', () => {
@@ -176,10 +178,32 @@ describe('fitted files', () => {
     expect(parseFitted({ pin: 'x', rules: { 'hex/a': { deny: 2 } } }).ok).toBe(false);
   });
 
-  it('loads a fitted file for a pin and returns null when it is missing', () => {
+  it('loads a fitted file for a pin and reports none when it is missing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fitted-'));
-    writeFileSync(join(dir, 'jev-1.13.0.json'), JSON.stringify({ pin: 'jev-1.13.0', generatedAt: 'now', rules: {} }));
-    expect(loadFitted(dir, 'jev-1.13.0')?.pin).toBe('jev-1.13.0');
-    expect(loadFitted(dir, 'jev-9.0.0')).toBeNull();
+    writeFileSync(join(dir, 'jev-1.13.0.json'), JSON.stringify({ pin: 'jev-1.13.0', generatedAt: 'now', rulebookVersion: '1.3.0', rules: {} }));
+    const loaded = loadFitted(dir, 'jev-1.13.0', '1.3.0');
+    expect(loaded.status).toBe('ok');
+    expect(loaded.status === 'ok' && loaded.fitted.pin).toBe('jev-1.13.0');
+    expect(loadFitted(dir, 'jev-9.0.0', '1.3.0')).toEqual({ status: 'none' });
+  });
+
+  it('reports a mismatch when the file pin or rulebook version differ from the running ones', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fitted-'));
+    writeFileSync(join(dir, 'jev-1.13.0.json'), JSON.stringify({ pin: 'jev-1.12.0', generatedAt: 'now', rulebookVersion: '1.3.0', rules: {} }));
+    const byPin = loadFitted(dir, 'jev-1.13.0', '1.3.0');
+    expect(byPin.status).toBe('mismatch');
+    expect(byPin.status === 'mismatch' && byPin.reason).toContain('pin jev-1.12.0');
+    writeFileSync(join(dir, 'jev-1.13.0.json'), JSON.stringify({ pin: 'jev-1.13.0', generatedAt: 'now', rulebookVersion: '1.2.0', rules: {} }));
+    const byVersion = loadFitted(dir, 'jev-1.13.0', '1.3.0');
+    expect(byVersion.status).toBe('mismatch');
+    expect(byVersion.status === 'mismatch' && byVersion.reason).toContain('rulebook 1.2.0');
+  });
+
+  it('throws a clean FittedFileError on malformed JSON or schema', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fitted-'));
+    writeFileSync(join(dir, 'jev-1.13.0.json'), '{ not json');
+    expect(() => loadFitted(dir, 'jev-1.13.0', '1.3.0')).toThrow(FittedFileError);
+    writeFileSync(join(dir, 'jev-1.13.0.json'), JSON.stringify({ pin: 'jev-1.13.0', rules: { 'hex/a': { deny: 2 } } }));
+    expect(() => loadFitted(dir, 'jev-1.13.0', '1.3.0')).toThrow(FittedFileError);
   });
 });

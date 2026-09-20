@@ -53,6 +53,10 @@ export interface DecideContext {
   uncalibrated?: boolean;
 }
 
+export class FittedFileError extends Error {}
+
+export type FittedLoad = { status: 'none' } | { status: 'ok'; fitted: FittedFile } | { status: 'mismatch'; fitted: FittedFile; reason: string };
+
 export type ParseFittedResult = { ok: true; fitted: FittedFile } | { ok: false; error: string };
 
 export function parseFitted(input: unknown): ParseFittedResult {
@@ -60,16 +64,32 @@ export function parseFitted(input: unknown): ParseFittedResult {
   return result.success ? { ok: true, fitted: result.data } : { ok: false, error: formatIssues(result.error) };
 }
 
-export function loadFitted(fittedDir: string, pin: string): FittedFile | null {
+export function loadFitted(fittedDir: string, pin: string, rulebookVersion?: string): FittedLoad {
   const path = join(fittedDir, `${pin}.json`);
   if (!existsSync(path)) {
-    return null;
+    return { status: 'none' };
   }
-  const parsed = parseFitted(JSON.parse(readFileSync(path, 'utf8')));
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new FittedFileError(`invalid fitted thresholds at ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const parsed = parseFitted(json);
   if (!parsed.ok) {
-    throw new Error(`invalid fitted thresholds at ${path}:\n${parsed.error}`);
+    throw new FittedFileError(`invalid fitted thresholds at ${path}:\n${parsed.error}`);
   }
-  return parsed.fitted;
+  const reasons: string[] = [];
+  if (parsed.fitted.pin !== pin) {
+    reasons.push(`file pin ${parsed.fitted.pin} != ${pin}`);
+  }
+  if (rulebookVersion !== undefined && parsed.fitted.rulebookVersion !== undefined && parsed.fitted.rulebookVersion !== rulebookVersion) {
+    reasons.push(`file rulebook ${parsed.fitted.rulebookVersion} != ${rulebookVersion}`);
+  }
+  if (reasons.length > 0) {
+    return { status: 'mismatch', fitted: parsed.fitted, reason: reasons.join('; ') };
+  }
+  return { status: 'ok', fitted: parsed.fitted };
 }
 
 export function resolveThresholds(rule: Rule, fitted: FittedThresholds | undefined): ResolvedThresholds {
