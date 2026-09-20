@@ -10,6 +10,8 @@ export const REQUEST_TOKEN_BUDGET = 64_000;
 
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 250;
+const RETRY_AFTER_MAX_MS = 10_000;
+const NETWORK_RETRIES = 1;
 const BREAKER_FAILURES = 3;
 const BREAKER_WINDOW_MS = 2 * 60_000;
 const BREAKER_OPEN_MS = 5 * 60_000;
@@ -211,10 +213,10 @@ function retryAfterMs(response: Response): number | null {
   }
   const seconds = Number(header);
   if (Number.isFinite(seconds) && seconds >= 0) {
-    return seconds * 1000;
+    return Math.min(RETRY_AFTER_MAX_MS, seconds * 1000);
   }
   const at = Date.parse(header);
-  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+  return Number.isNaN(at) ? null : Math.min(RETRY_AFTER_MAX_MS, Math.max(0, at - Date.now()));
 }
 
 function isAbortError(error: unknown): boolean {
@@ -225,7 +227,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-type Attempt = { kind: 'ok'; response: JevResponse } | { kind: 'retry'; status: number; waitMs: number | null } | { kind: 'fail'; result: JevFailure };
+type Attempt =
+  | { kind: 'ok'; response: JevResponse }
+  | { kind: 'retry'; status: number; waitMs: number | null }
+  | { kind: 'network'; detail: string }
+  | { kind: 'fail'; result: JevFailure };
 
 export function createJevClient(options: JevClientOptions): JevClient {
   const clock = options.clock ?? Date.now;
@@ -236,7 +242,7 @@ export function createJevClient(options: JevClientOptions): JevClient {
   const rulebookVersion = options.rulebookVersion ?? '';
   const breaker = createBreaker(options.breakerPath, clock);
 
-  const log = (request: JevRequest, result: JevAskResult, decision: Record<string, string> | undefined): void => {
+  const log = (request: JevRequest, result: JevAskResult, decision: Record<string, string> | undefined, hookError: string | undefined): void => {
     if (options.logPath === undefined) {
       return;
     }
@@ -267,13 +273,23 @@ export function createJevClient(options: JevClientOptions): JevClient {
       }
     }
     entry.decision = decision ?? null;
+    if (hookError !== undefined) {
+      entry.hookError = hookError;
+    }
     mkdirSync(dirname(options.logPath), { recursive: true });
     appendFileSync(options.logPath, `${JSON.stringify(entry)}\n`);
   };
 
   const finish = (request: JevRequest, result: JevAskResult, hooks: JevAskHooks | undefined): JevAskResult => {
     const onResult = hooks?.onResult ?? options.onResult;
-    log(request, result, onResult?.(result, request));
+    let decision: Record<string, string> | undefined;
+    let hookError: string | undefined;
+    try {
+      decision = onResult?.(result, request);
+    } catch (error) {
+      hookError = errorMessage(error);
+    }
+    log(request, result, decision, hookError);
     return result;
   };
 
@@ -316,7 +332,7 @@ export function createJevClient(options: JevClientOptions): JevClient {
       if (isAbortError(error)) {
         return { kind: 'fail', result: { ok: false, error: 'timeout', detail: `no response within ${timeoutMs} ms` } };
       }
-      return { kind: 'fail', result: { ok: false, error: 'http', detail: errorMessage(error) } };
+      return { kind: 'network', detail: errorMessage(error) };
     } finally {
       clearTimeout(timer);
     }
@@ -345,8 +361,19 @@ export function createJevClient(options: JevClientOptions): JevClient {
     const body = JSON.stringify({ model: options.pin, state: request.state, questions: request.questions });
     const started = clock();
     let lastStatus = 0;
+    let networkFailures = 0;
     for (let retry = 0; retry <= MAX_RETRIES; retry += 1) {
       const outcome = await attempt(body, apiKey);
+      if (outcome.kind === 'network') {
+        networkFailures += 1;
+        if (networkFailures > NETWORK_RETRIES) {
+          breaker.recordFailure();
+          return { ok: false, error: 'http', detail: outcome.detail };
+        }
+        await sleep(BACKOFF_BASE_MS * (1 + random()));
+        retry -= 1;
+        continue;
+      }
       if (outcome.kind === 'ok') {
         breaker.recordSuccess();
         return {

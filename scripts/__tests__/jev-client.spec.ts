@@ -272,3 +272,56 @@ describe('toJevQuestion', () => {
     expect(toJevQuestion({ type: 'noul', instructions: 'Yes?' })).toEqual({ type: 'noul', instructions: 'Yes?' });
   });
 });
+
+describe('createJevClient hardening', () => {
+  it('never lets a throwing onResult hook break the call and logs the hook error', async () => {
+    const dir = tempDir();
+    const logPath = join(dir, 'jev.jsonl');
+    const fake = fakeFetch([{ status: 200, body: okBody() }]);
+    const result = await client({ fetchImpl: fake.fetch, logPath }).ask(request, {
+      onResult: () => {
+        throw new TypeError('observer exploded');
+      },
+    });
+    expect(result.ok).toBe(true);
+    const line: unknown = JSON.parse(readFileSync(logPath, 'utf8').trim());
+    expect(line).toMatchObject({ hookError: 'observer exploded', decision: null });
+  });
+
+  it('retries a network rejection once, then reports http and counts it in the breaker', async () => {
+    const dir = tempDir();
+    const breakerPath = join(dir, 'breaker.json');
+    let now = 0;
+    const calls: number[] = [];
+    const failing: FetchLike = () => {
+      calls.push(1);
+      return Promise.reject(new Error('connect ECONNREFUSED'));
+    };
+    const jev = client({ fetchImpl: failing, breakerPath, clock: () => now });
+    const result = await jev.ask(request);
+    expect(result).toMatchObject({ ok: false, error: 'http', detail: 'connect ECONNREFUSED' });
+    expect(result).not.toHaveProperty('status');
+    expect(calls).toHaveLength(2);
+    now += 1000;
+    await jev.ask(request);
+    now += 1000;
+    await jev.ask(request);
+    expect(calls).toHaveLength(6);
+    expect(await jev.ask(request)).toMatchObject({ ok: false, error: 'breaker-open' });
+    expect(calls).toHaveLength(6);
+  });
+
+  it('caps Retry-After at ten seconds', async () => {
+    const waits: number[] = [];
+    const fake = fakeFetch([{ status: 429, body: {}, headers: { 'retry-after': '120' } }, { status: 200, body: okBody() }]);
+    const result = await client({
+      fetchImpl: fake.fetch,
+      sleep: (ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      },
+    }).ask(request);
+    expect(result.ok).toBe(true);
+    expect(waits).toEqual([10_000]);
+  });
+});
