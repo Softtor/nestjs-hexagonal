@@ -8,13 +8,13 @@ export interface Hunk {
   end: number;
 }
 
-export interface JevState {
+export type JevState = {
   preamble: string;
   path: string;
   layer: string;
   slice: Slice;
   code: string;
-}
+};
 
 export interface BuiltState {
   state: JevState;
@@ -33,10 +33,6 @@ const CHARS_PER_TOKEN = 4;
 interface LineRange {
   start: number;
   end: number;
-}
-
-function totalLines(content: string): number {
-  return content === '' ? 0 : content.split('\n').length;
 }
 
 function mergeRanges(ranges: LineRange[]): LineRange[] {
@@ -247,6 +243,30 @@ export function truncateToTokens(code: string, maxTokens: number): { code: strin
   return { code: `${code.slice(0, maxChars)}\n// [truncated: ${omitted} chars omitted]`, truncated: true };
 }
 
+export interface StateConfig {
+  slice: Slice;
+  contextLines: number;
+  maxTokens: number;
+  preamble: string;
+}
+
+export interface BuildStateFromConfigInput {
+  config: StateConfig;
+  layer: string;
+  file: SourceFile;
+  hunks?: Hunk[];
+}
+
+export function buildStateFromConfig({ config, layer, file, hunks }: BuildStateFromConfigInput): BuiltState {
+  const sliced = sliceCode(file.content, config.slice, hunks, config.contextLines);
+  const { code, truncated } = truncateToTokens(sliced.code, config.maxTokens);
+  return {
+    state: { preamble: config.preamble, path: file.path, layer, slice: config.slice, code },
+    startLine: sliced.startLine,
+    truncated,
+  };
+}
+
 export interface BuildStateInput {
   rule: Rule;
   file: SourceFile;
@@ -254,16 +274,6 @@ export interface BuildStateInput {
 }
 
 export function buildState({ rule, file, hunks }: BuildStateInput): BuiltState {
-  const config = rule.state ?? { slice: 'file', contextLines: 0, maxTokens: 4000, preamble: '' };
-  const sliced = sliceCode(file.content, config.slice, hunks, config.contextLines);
-  const { code, truncated } = truncateToTokens(sliced.code, config.maxTokens);
-  return {
-    state: { preamble: config.preamble, path: file.path, layer: rule.layer, slice: config.slice, code },
-    startLine: sliced.startLine,
-    truncated,
-  };
-}
-
-export function fileLineCount(content: string): number {
-  return totalLines(content);
+  const config: StateConfig = rule.state ?? { slice: 'file', contextLines: 0, maxTokens: 4000, preamble: '' };
+  return buildStateFromConfig({ config, layer: rule.layer, file, hunks });
 }

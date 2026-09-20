@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJevClient, toJevQuestion, type JevQuestion, type JevRequest } from '../lib/jev-client.ts';
+import { createJevClient, toJevQuestion, type FetchLike, type JevQuestion, type JevRequest } from '../lib/jev-client.ts';
 import { QuestionSchema } from '../lib/rulebook.schema.ts';
 
 const PIN = 'jev-1.13.0';
@@ -18,22 +18,21 @@ interface CannedResponse {
 }
 
 interface FakeFetch {
-  fetch: typeof fetch;
+  fetch: FetchLike;
   calls: Array<{ url: string; init: RequestInit }>;
 }
 
 function fakeFetch(responses: CannedResponse[]): FakeFetch {
   const calls: FakeFetch['calls'] = [];
-  const fetchImpl: typeof fetch = (input, init) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    calls.push({ url, init: init ?? {} });
+  const fetchImpl: FetchLike = (url, init) => {
+    calls.push({ url, init });
     const canned = responses[Math.min(calls.length - 1, responses.length - 1)];
     if (canned === undefined) {
       return Promise.reject(new Error('no canned response'));
     }
     if (canned.hang) {
       return new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => {
+        init.signal?.addEventListener('abort', () => {
           reject(new DOMException('aborted', 'AbortError'));
         });
       });
@@ -239,7 +238,7 @@ describe('createJevClient', () => {
 
   it('refuses a request whose state exceeds the 32k token budget', async () => {
     const fake = fakeFetch([{ status: 200, body: okBody() }]);
-    const huge = { ...request, state: { ...request.state, code: 'x'.repeat(33_000 * 4) } };
+    const huge: JevRequest = { ...request, state: { preamble: 'p', code: 'x'.repeat(33_000 * 4) } };
     const result = await client({ fetchImpl: fake.fetch }).ask(huge);
     expect(result).toMatchObject({ ok: false, error: 'too-large' });
     expect(fake.calls).toHaveLength(0);

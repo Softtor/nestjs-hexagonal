@@ -14,6 +14,8 @@ const BREAKER_FAILURES = 3;
 const BREAKER_WINDOW_MS = 2 * 60_000;
 const BREAKER_OPEN_MS = 5 * 60_000;
 
+export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
+
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export type JevQuestion =
@@ -73,7 +75,7 @@ export type JevAskResult = JevSuccess | JevFailure;
 export interface JevClientOptions {
   apiKey: string | undefined;
   pin: string;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchLike;
   timeoutMs?: number;
   cacheDir?: string;
   logPath?: string;
@@ -86,8 +88,12 @@ export interface JevClientOptions {
   random?: () => number;
 }
 
+export interface JevAskHooks {
+  onResult?: (result: JevAskResult, request: JevRequest) => Record<string, string> | undefined;
+}
+
 export interface JevClient {
-  ask(request: JevRequest): Promise<JevAskResult>;
+  ask(request: JevRequest, hooks?: JevAskHooks): Promise<JevAskResult>;
 }
 
 export function estimateTokens(value: JsonValue | JevQuestion): number {
@@ -265,8 +271,9 @@ export function createJevClient(options: JevClientOptions): JevClient {
     appendFileSync(options.logPath, `${JSON.stringify(entry)}\n`);
   };
 
-  const finish = (request: JevRequest, result: JevAskResult): JevAskResult => {
-    log(request, result, options.onResult?.(result, request));
+  const finish = (request: JevRequest, result: JevAskResult, hooks: JevAskHooks | undefined): JevAskResult => {
+    const onResult = hooks?.onResult ?? options.onResult;
+    log(request, result, onResult?.(result, request));
     return result;
   };
 
@@ -372,10 +379,10 @@ export function createJevClient(options: JevClientOptions): JevClient {
   };
 
   return {
-    async ask(request) {
+    async ask(request, hooks) {
       const apiKey = options.apiKey;
       if (apiKey === undefined || apiKey === '') {
-        return finish(request, { ok: false, error: 'no-key', detail: 'TYPESAFE_API_KEY is not set' });
+        return finish(request, { ok: false, error: 'no-key', detail: 'TYPESAFE_API_KEY is not set' }, hooks);
       }
       const stateTokens = estimateTokens(request.state);
       const questionTokens = Object.values(request.questions).map(estimateTokens);
@@ -386,7 +393,7 @@ export function createJevClient(options: JevClientOptions): JevClient {
           ok: false,
           error: 'too-large',
           detail: `estimated ${stateTokens} state tokens + ${longest} question tokens (limit ${STATE_TOKEN_BUDGET}), ${total} total (limit ${REQUEST_TOKEN_BUDGET})`,
-        });
+        }, hooks);
       }
       const key = cacheKey(request, options.pin, rulebookVersion);
       const hit = readCache(key);
@@ -399,10 +406,10 @@ export function createJevClient(options: JevClientOptions): JevClient {
           latencyMs: 0,
           cached: true,
           uncalibrated: hit.model !== options.pin,
-        });
+        }, hooks);
       }
       if (breaker.isOpen()) {
-        return finish(request, { ok: false, error: 'breaker-open', detail: 'circuit breaker is open after repeated failures' });
+        return finish(request, { ok: false, error: 'breaker-open', detail: 'circuit breaker is open after repeated failures' }, hooks);
       }
       const result = await send(request, apiKey);
       if (result.ok) {
@@ -412,7 +419,7 @@ export function createJevClient(options: JevClientOptions): JevClient {
           usage: { input_tokens: result.usage.inputTokens, output_tokens: result.usage.outputTokens },
         });
       }
-      return finish(request, result);
+      return finish(request, result, hooks);
     },
   };
 }
