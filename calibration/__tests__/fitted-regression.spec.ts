@@ -43,7 +43,8 @@ describe.skipIf(!hasResults)(`fitted regression for ${PIN}`, () => {
       }
       const records = (resultsByRule.get(ruleId) ?? []).filter((record) => record.error === undefined);
       expect(records.length, `${ruleId} has results`).toBeGreaterThan(0);
-      const metrics = metricsAtCut(records, thresholds.deny);
+      const abstention = thresholds.uncertain !== undefined ? { uncertain: thresholds.uncertain } : { minConfidence: thresholds.minConfidence ?? 0.6 };
+      const metrics = metricsAtCut(records, thresholds.deny, abstention);
       expect(metrics.precision, `${ruleId} precision at deny ${thresholds.deny}`).toBeGreaterThanOrEqual(DENY_MIN_PRECISION);
       expect(metrics.fp, `${ruleId} false positives at deny`).toBe(0);
     }

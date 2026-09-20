@@ -61,7 +61,7 @@ export function renderReport(pin: string, rulebookVersion: string, generatedAt: 
   const lines: string[] = [];
   lines.push(`# Calibration report for ${pin}`);
   lines.push('');
-  lines.push(`Generated ${generatedAt} against rulebook \`hexagonal\` ${rulebookVersion}. Cuts are applied to the noul probability or to the probability mass on the violating options/levels. Intervals are 95% Wilson. \`deny\` is fitted only with at least ${DENY_MIN_SAMPLES} good and ${DENY_MIN_SAMPLES} bad cases, precision >= ${DENY_MIN_PRECISION} and zero false positives on the good cases. Every fitted cut is restricted to values at or above the rule's uncertain band \`hi\`; \`advise\` takes the lowest cut of the best-F1 plateau, \`ask\` and \`deny\` take the highest cut of their plateau.`);
+  lines.push(`Generated ${generatedAt} against rulebook \`hexagonal\` ${rulebookVersion}. Cuts are applied to the noul probability or to the probability mass on the violating options/levels, reproducing the runtime decision: a noul inside the uncertain band or a choice/score below minConfidence counts as uncertain (never TP nor FP, a miss for recall). Intervals are 95% Wilson. \`deny\` is fitted only with at least ${DENY_MIN_SAMPLES} good and ${DENY_MIN_SAMPLES} bad cases, precision >= ${DENY_MIN_PRECISION} and zero false positives on the good cases. Every fitted cut is restricted to values at or above the rule's uncertain band \`hi\`; \`advise\` takes the lowest cut of the best-F1 plateau, \`ask\` and \`deny\` take the highest cut of their plateau.`);
   lines.push('');
   lines.push('## Summary');
   lines.push('');
@@ -85,17 +85,17 @@ export function renderReport(pin: string, rulebookVersion: string, generatedAt: 
       lines.push(`\`deny\` omitted: ${fit.denyReason}.`);
     }
     lines.push('');
-    lines.push('| Cut | TP | FP | FN | TN | Precision | Recall | F1 |');
-    lines.push('|---|---|---|---|---|---|---|---|');
+    lines.push('| Cut | TP | FP | FN | TN | Uncertain | Precision | Recall | F1 |');
+    lines.push('|---|---|---|---|---|---|---|---|---|');
     for (const cut of m.cuts.filter((entry) => REPORT_CUTS.some((reported) => reported === entry.cut))) {
       lines.push(
-        `| ${cut.cut} | ${cut.tp} | ${cut.fp} | ${cut.fn} | ${cut.tn} | ${pct(cut.precision)} ${interval(cut.precisionInterval.lo, cut.precisionInterval.hi)} | ${pct(cut.recall)} ${interval(cut.recallInterval.lo, cut.recallInterval.hi)} | ${cut.f1.toFixed(3)} |`,
+        `| ${cut.cut} | ${cut.tp} | ${cut.fp} | ${cut.fn} | ${cut.tn} | ${cut.uncertain} | ${pct(cut.precision)} ${interval(cut.precisionInterval.lo, cut.precisionInterval.hi)} | ${pct(cut.recall)} ${interval(cut.recallInterval.lo, cut.recallInterval.hi)} | ${cut.f1.toFixed(3)} |`,
       );
     }
     const adviseCut = m.cuts.find((entry) => entry.cut === fit.fitted.advise);
     if (adviseCut) {
       lines.push('');
-      lines.push(`At the fitted advise cut ${adviseCut.cut}: ${adviseCut.fn} miss(es) ${adviseCut.misses.length > 0 ? `(${adviseCut.misses.join(', ')})` : ''}; ${adviseCut.fp} false positive(s) ${adviseCut.falsePositives.length > 0 ? `(${adviseCut.falsePositives.join(', ')})` : ''}.`);
+      lines.push(`At the fitted advise cut ${adviseCut.cut}: effective recall ${pct(adviseCut.recall)} (uncertain answers count as misses; ${adviseCut.uncertain} uncertain${adviseCut.uncertainCases.length > 0 ? `: ${adviseCut.uncertainCases.join(', ')}` : ''}); ${adviseCut.fn} miss(es) ${adviseCut.misses.length > 0 ? `(${adviseCut.misses.join(', ')})` : ''}; ${adviseCut.fp} false positive(s) ${adviseCut.falsePositives.length > 0 ? `(${adviseCut.falsePositives.join(', ')})` : ''}.`);
     }
     lines.push('');
     lines.push('Also caught by static? does not count: TODO=false (no static overlap has been measured yet).');

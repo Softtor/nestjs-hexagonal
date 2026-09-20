@@ -54,6 +54,21 @@ describe('metricsAtCut', () => {
   });
 });
 
+describe('metricsAtCut with abstention', () => {
+  it('counts records the runtime would call uncertain as neither TP nor FP, but as FN for recall', () => {
+    const choice = (caseId: string, expected: ResultRecord['expected'], confidence: number): ResultRecord => ({ ...record({ caseId, expected, value: 0.9 }), primitive: 'choice', answer: 'bad-a', confidence });
+    const records = [choice('bad-confident', 'violation', 0.9), choice('bad-shy', 'violation', 0.4), choice('good-shy', 'ok', 0.4)];
+    const metrics = metricsAtCut(records, 0.7, { minConfidence: 0.6 });
+    expect(metrics).toMatchObject({ tp: 1, fp: 0, fn: 1, tn: 0, uncertain: 2, uncertainCases: ['bad-shy', 'good-shy'], misses: ['bad-shy'] });
+    expect(metrics.precision).toBe(1);
+    expect(metrics.recall).toBeCloseTo(0.5);
+    const noul = [record({ caseId: 'bad-band', expected: 'violation', value: 0.6 }), record({ caseId: 'good-band', expected: 'ok', value: 0.5 })];
+    const banded = metricsAtCut(noul, 0.55, { uncertain: { lo: 0.35, hi: 0.65 } });
+    expect(banded).toMatchObject({ tp: 0, fp: 0, fn: 1, tn: 0, uncertain: 2 });
+    expect(metricsAtCut(noul, 0.55)).toMatchObject({ tp: 1, fp: 0, uncertain: 0 });
+  });
+});
+
 describe('fitRule', () => {
   it('fits advise at the best F1 and ask at the first cut with precision >= 0.85, and omits deny below 30/30', () => {
     const records = synthetic(10, 10, (i) => (i === 0 ? 0.72 : 0.1 + i * 0.02), (i) => 0.78 + i * 0.02);
@@ -158,6 +173,8 @@ describe('fitAll', () => {
     expect(output.report).toContain('TODO=false');
     expect(output.report).toContain('Cuts restricted to >= hi=0.65; advise at the lowest cut of the best-F1 plateau, ask and deny at the highest cut of their plateau.');
     expect(output.report).toContain('| 0.9 |');
+    expect(output.report).toContain('effective recall');
+    expect(output.report).toContain('| Cut | TP | FP | FN | TN | Uncertain |');
     expect(output.report).toContain('`deny` omitted: needs at least 30 good and 30 bad cases (have 10/10).');
   });
 });

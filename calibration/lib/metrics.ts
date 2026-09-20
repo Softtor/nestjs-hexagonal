@@ -13,12 +13,19 @@ export interface Interval {
   hi: number;
 }
 
+export interface Abstention {
+  uncertain?: UncertainBand;
+  minConfidence?: number;
+}
+
 export interface CutMetrics {
   cut: number;
   tp: number;
   fp: number;
   fn: number;
   tn: number;
+  uncertain: number;
+  uncertainCases: string[];
   precision: number;
   precisionInterval: Interval;
   recall: number;
@@ -80,14 +87,31 @@ export function percentile(values: number[], fraction: number): number {
   return sorted[index] ?? 0;
 }
 
-export function metricsAtCut(records: ResultRecord[], cut: number): CutMetrics {
+function abstains(record: ResultRecord, abstention: Abstention): boolean {
+  if (record.primitive === 'noul') {
+    const band = abstention.uncertain;
+    return band !== undefined && record.value >= band.lo && record.value <= band.hi;
+  }
+  return abstention.minConfidence !== undefined && (record.confidence ?? 0) < abstention.minConfidence;
+}
+
+export function metricsAtCut(records: ResultRecord[], cut: number, abstention: Abstention = {}): CutMetrics {
   let tp = 0;
   let fp = 0;
   let fn = 0;
   let tn = 0;
   const falsePositives: string[] = [];
   const misses: string[] = [];
+  const uncertainCases: string[] = [];
   for (const record of records) {
+    if (abstains(record, abstention)) {
+      uncertainCases.push(record.caseId);
+      if (record.expected === 'violation') {
+        fn += 1;
+        misses.push(record.caseId);
+      }
+      continue;
+    }
     const flagged = record.value >= cut;
     if (record.expected === 'violation') {
       if (flagged) {
@@ -112,6 +136,8 @@ export function metricsAtCut(records: ResultRecord[], cut: number): CutMetrics {
     fp,
     fn,
     tn,
+    uncertain: uncertainCases.length,
+    uncertainCases: uncertainCases.sort(),
     precision,
     precisionInterval: wilson(tp, tp + fp),
     recall,
@@ -120,13 +146,6 @@ export function metricsAtCut(records: ResultRecord[], cut: number): CutMetrics {
     falsePositives: falsePositives.sort(),
     misses: misses.sort(),
   };
-}
-
-function isUncertain(record: ResultRecord, band: UncertainBand, minConfidence: number): boolean {
-  if (record.primitive === 'noul') {
-    return record.value >= band.lo && record.value <= band.hi;
-  }
-  return (record.confidence ?? 0) < minConfidence;
 }
 
 export function cutFloor(input: FitInput): number {
@@ -138,7 +157,8 @@ export function computeRuleMetrics(input: FitInput): RuleMetrics {
   const primitive = usable[0]?.primitive ?? input.records[0]?.primitive ?? 'noul';
   const band = input.uncertain ?? { lo: 0.35, hi: 0.65 };
   const minConfidence = input.minConfidence ?? 0.6;
-  const uncertain = usable.filter((record) => isUncertain(record, band, minConfidence)).length;
+  const abstention: Abstention = primitive === 'noul' ? { uncertain: band } : { minConfidence };
+  const uncertain = usable.filter((record) => abstains(record, abstention)).length;
   const latencies = usable.filter((record) => !record.cached).map((record) => record.latencyMs);
   return {
     ruleId: input.ruleId,
@@ -147,7 +167,7 @@ export function computeRuleMetrics(input: FitInput): RuleMetrics {
     nBad: usable.filter((record) => record.expected === 'violation').length,
     errors: input.records.length - usable.length,
     models: [...new Set(input.records.map((record) => record.model))].sort(),
-    cuts: [...new Set([...REPORT_CUTS, ...FIT_GRID, cutFloor(input)])].sort((a, b) => a - b).map((cut) => metricsAtCut(usable, cut)),
+    cuts: [...new Set([...REPORT_CUTS, ...FIT_GRID, cutFloor(input)])].sort((a, b) => a - b).map((cut) => metricsAtCut(usable, cut, abstention)),
     uncertainRate: usable.length === 0 ? 0 : uncertain / usable.length,
     latency: { p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95) },
     inputTokens: usable.reduce((sum, record) => sum + record.inputTokens, 0),
