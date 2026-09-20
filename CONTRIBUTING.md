@@ -13,7 +13,7 @@ Thanks for helping grow nestjs-hexagonal — especially after the first communit
 | Kind | Where | Notes |
 |---|---|---|
 | Skill / reference | `skills/<name>/` | `SKILL.md` + `references/` templates |
-| Agent | `agents/*.md` | Frontmatter `model` must stay pinned (`claude-opus-5` / `claude-sonnet-5`) unless the change is intentional |
+| Agent | `agents/*.md` | Frontmatter `model` must stay pinned (`claude-opus-5` / `claude-sonnet-5`; `claude-haiku-4-5` or `haiku` only for read-only scanners) unless the change is intentional |
 | Shared examples | `shared/**/*.ts.example` | No NestJS in domain examples |
 | Bounded context sample | `examples/` | Mirror Order BC layering |
 | Docs / DX | `README.md`, `.github/` | Issue templates, checklists, i18n |
@@ -30,10 +30,22 @@ Thanks for helping grow nestjs-hexagonal — especially after the first communit
 
 ## Agent checklist
 
-- [ ] `model` is an explicit ID (`claude-opus-5` or `claude-sonnet-5`) when capability matters
+- [ ] `model` is an explicit ID (`claude-opus-5` or `claude-sonnet-5`) when capability matters; `haiku` only for read-only scanning
 - [ ] Description states when to dispatch the agent
-- [ ] Body starts by loading the matching skill
+- [ ] Body says where the rules come from (the rulebook slice injected at `SubagentStart`) and loads the matching skill for code patterns
+- [ ] Body has the "When the SubagentStop hook blocks" section and runs `nestjs-hexagonal-check` on the files it created before finishing
 - [ ] Opus 5 for decisions (domain, review, event debug); Sonnet 5 for execution layers
+
+## Frontmatter, references and links (CI)
+
+`bun scripts/validate-frontmatter.ts` runs as the `frontmatter` job of `.github/workflows/ci.yml` and fails the pull request when:
+
+- an `agents/*.md` file lacks `name`, `description`, `model` or a non-empty `tools` list, its frontmatter is not valid YAML, or its `model` is outside `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`, `haiku`;
+- a `skills/*/SKILL.md` lacks `name` or `description`, or its `name` differs from the directory name;
+- a `nestjs-hexagonal:<id>` reference in agents, skills, README, CLAUDE.md, CONTRIBUTING.md, ROADMAP.md or CHANGELOG.md names neither a skill nor an agent;
+- a relative Markdown link in those files does not resolve (links inside fenced code blocks are ignored).
+
+Run it locally before opening the PR; `bun test ./scripts` also validates the real tree through `scripts/__tests__/validate-frontmatter.spec.ts`.
 
 ## PR process
 
