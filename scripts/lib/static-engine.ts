@@ -220,7 +220,7 @@ function runRequiredImport(rule: Rule, check: Extract<Check, { kind: 'required-i
   return satisfied ? [] : [finding(rule, file.path, `no import matching ${check.modules.join(', ')}`)];
 }
 
-function findBlockEnd(masked: string, openIndex: number): number {
+export function findBlockEnd(masked: string, openIndex: number): number {
   let depth = 0;
   for (let i = openIndex; i < masked.length; i += 1) {
     const char = masked[i];
@@ -254,7 +254,7 @@ function declarationPatterns(selector: 'function' | 'method', name?: string): Re
   ];
 }
 
-interface DeclarationRange {
+export interface DeclarationRange {
   start: number;
   end: number;
 }
