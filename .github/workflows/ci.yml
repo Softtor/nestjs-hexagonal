@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '17 6 * * 1'
 
 jobs:
   unit:
@@ -34,7 +36,59 @@ jobs:
         run: bunx --package typescript@5.9.3 tsc -p tsconfig.json
 
       - name: Unit tests (no network)
-        run: bun test ./scripts
+        run: bun test ./scripts ./calibration/__tests__
 
       - name: Examples pass the hexagonal rulebook
         run: bun scripts/check.ts --rulebook hexagonal --files 'examples/**/*.ts' --classes static --format text --strict
+
+  calibration:
+    name: Calibration against the pinned Jev model
+    # Never on pull_request: forks do not receive the secret and must not be able to spend it.
+    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    needs: unit
+    timeout-minutes: 30
+    env:
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Skip when the secret is not configured
+        id: gate
+        run: |
+          if [ -z "${TYPESAFE_API_KEY}" ]; then
+            echo "TYPESAFE_API_KEY is not configured; skipping calibration" >&2
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the golden cases through Jev (budget 500 requests)
+        if: steps.gate.outputs.run == 'true'
+        run: bun calibration/run.ts --rule all --pin jev-1.13.0 --out calibration/results/jev-1.13.0 --max-requests 500
+
+      - name: Fit thresholds and write the report
+        if: steps.gate.outputs.run == 'true'
+        run: bun calibration/fit.ts --pin jev-1.13.0
+
+      - name: Regression against the fitted thresholds
+        if: steps.gate.outputs.run == 'true'
+        run: bun test ./calibration/__tests__/fitted-regression.spec.ts
+
+      - name: Upload results and report (not committed)
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibration-jev-1.13.0-${{ github.run_id }}
+          path: |
+            calibration/results
+            calibration/report.md
+            calibration/fitted
+          retention-days: 90
