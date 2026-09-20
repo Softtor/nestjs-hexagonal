@@ -1,0 +1,40 @@
+# Example project rulebook. Copy it to <project>/.claude/rulebook.yaml,
+# refresh the sha256 stamps (sha256sum rulebooks/<id>.rulebook.yaml in the
+# installed plugin) and add the project's own rules under its namespace.
+# A stale stamp does not stop the check: findings are reported as
+# uncalibrated and never block.
+$schema: nestjs-hexagonal/rulebook@1
+id: acme-crm
+version: 0.1.0
+extends:
+  - id: hexagonal
+    version: 1.2.0
+    sha256: c4fe2a9c4187bb7c2b2b3524663691d1f68264f6e9fd84c96ecac69e7033c6a2
+  - id: softtor-conventions
+    version: 1.2.0
+    sha256: 14f70ba797357cafaeadb8bdbf1cb4d2e9670fc86d9167cccb439cd6a9921dc8
+model:
+  provider: typesafe
+  pin: jev-1.13.0
+
+rules:
+  - id: acme/no-console-in-handlers
+    title: Handlers do not log to the console
+    layer: application
+    scope:
+      include: ['src/**/application/**/*.handler.ts']
+    class: static
+    severity: WARN
+    rationale: Handlers log through the injected logger port so tests can assert on it.
+    fix: Inject the LoggerPort and remove the console call.
+    source: acme conventions
+    check:
+      kind: regex
+      pattern: 'console\.(?:log|warn|error)\s*\('
+    tags: [logging]
+
+overrides:
+  - id: softtor/identifiers-english
+    severity: WARN
+    scope:
+      exclude: ['src/legacy/**']

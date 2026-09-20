@@ -118,6 +118,73 @@ One pattern only: `@EventsHandler` -> enrich if needed -> `WsGatewayPort.emit()`
 
 No generic relay, no event maps, no custom broadcast events. Each event that needs to reach the frontend has its own explicit handler.
 
+## Rulebook & CLI
+
+The architecture rules above also exist as a machine-readable **rulebook** (`rulebooks/hexagonal.rulebook.yaml`) and a checker CLI, `nestjs-hexagonal-check`, that runs the static rules over a set of files. Semantic rules (answered by a typed-judgment model) and runtime rules (package tests) are declared in the rulebook but are not executed by this version: the CLI reports them as skipped and never opens a network connection.
+
+### Running the checker
+
+```bash
+# inside this repository
+bun scripts/check.ts --rulebook hexagonal --files 'src/**/*.ts' --classes static --format text
+
+# from a project that installed the plugin as a dev dependency
+bun add -d github:Softtor/nestjs-hexagonal#v1.2.0
+bunx nestjs-hexagonal-check --files 'apps/api/src/**/*.ts' --strict
+bunx nestjs-hexagonal-check --diff origin/main --format json
+```
+
+| Flag | Meaning |
+|---|---|
+| `--rulebook <path\|id>` | rulebook to run; an id resolves to `rulebooks/<id>.rulebook.yaml` in the plugin (`hexagonal`, `softtor-conventions`) |
+| `--project-rulebook <path>` | project rulebook; defaults to `$NESTJS_HEXAGONAL_RULEBOOK`, then `$CLAUDE_PROJECT_DIR/.claude/rulebook.yaml` |
+| `--files <glob...>` / `--diff <base>` | files to check (globs relative to the current directory) or `git diff --name-only <base>` |
+| `--classes static[,semantic,runtime]` | rule classes to run (`static` only in this version) |
+| `--format json\|text` | output format |
+| `--strict` | exit 1 when any FAIL finding exists |
+| `--explain` | list the rules applied to each file |
+
+Each finding carries the rule id, severity (`FAIL`/`WARN`), path, line, evidence and the rule's `fix` text.
+
+### Project rulebook
+
+A project opts in by creating `.claude/rulebook.yaml` (or pointing `NESTJS_HEXAGONAL_RULEBOOK` at a file). It extends one or more plugin rulebooks, adds rules under its own namespace and overrides inherited rules by id (`disabled`, `severity`, `scope`, `thresholds`). `rulebooks/project.example.rulebook.yaml` is a complete example.
+
+```yaml
+$schema: nestjs-hexagonal/rulebook@1
+id: acme-crm
+version: 0.1.0
+extends:
+  - { id: hexagonal, version: 1.2.0, sha256: <sha256sum rulebooks/hexagonal.rulebook.yaml> }
+model: { provider: typesafe, pin: jev-1.13.0 }
+rules: []
+overrides:
+  - { id: softtor/identifiers-english, scope: { exclude: ['src/legacy/**'] } }
+```
+
+The `sha256` stamp pins the content of the base rulebook the project was calibrated against. When the installed copy differs, the CLI still runs but reports `rulebook-mismatch` and marks the run `uncalibrated`; a stale stamp never blocks.
+
+### Opt-in gate and kill switch
+
+`scripts/run.sh` is the single entry point for the CLI and for the plugin hooks (hooks ship in a later version). In hook mode (`--hook`) it decides in pure shell, before starting any runtime:
+
+1. no `.claude/rulebook.yaml` in `$CLAUDE_PROJECT_DIR` and no `NESTJS_HEXAGONAL_RULEBOOK` pointing at an existing file: exit 0 with no output (the plugin is inert for projects that did not opt in);
+2. `NESTJS_HEXAGONAL_DISABLE=1`: exit 0 (kill switch, also honoured by the CLI);
+3. `file_path` resolving outside the project directory: exit 0;
+4. the project's own `node_modules/.bin/nestjs-hexagonal-check` is preferred when present, so the version pinned in the project's lockfile is the one that runs; otherwise the plugin's `scripts/check.ts`;
+5. missing `node_modules` (plugin loaded in place, or a failed install): an actionable message on stderr and exit 0 in hook mode, exit 1 in CLI mode.
+
+The runtime is `bun`; when it is absent the script falls back to `node --experimental-strip-types`.
+
+### Rulebooks shipped
+
+| Rulebook | Scope |
+|---|---|
+| `hexagonal` | project-agnostic hexagonal + DDD + CQRS rules (`hex/*`) |
+| `softtor-conventions` | multi-tenant scoping, no emoji, English identifiers (`softtor/*`); extend it only if those conventions apply |
+
+Static rules have golden fixtures under `calibration/golden/<rule-id>/{good,bad}/`; `bun test` fails if a static rule lacks fixtures or a fixture stops behaving as labelled.
+
 ## Shared Examples
 
 The `shared/` directory contains `.ts.example` reference implementations for projects that don't yet have base classes.
