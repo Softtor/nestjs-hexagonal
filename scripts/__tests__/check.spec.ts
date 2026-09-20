@@ -9,6 +9,7 @@ import { parseUnifiedDiff, runCli, type CliIo } from '../check.ts';
 import type { FetchLike } from '../lib/jev-client.ts';
 import { readRulebookFile, sha256Of } from '../lib/compose.ts';
 import { readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 
 const PLUGIN_ROOT = resolve(import.meta.dir, '../..');
 const GOLDEN_ROOT = join(PLUGIN_ROOT, 'calibration', 'golden');
@@ -499,5 +500,41 @@ describe('parseUnifiedDiff without prefixes', () => {
   it('keeps a path whose first segment is literally b', () => {
     const diff = ['diff --git b/x.ts b/x.ts', '--- b/x.ts', '+++ b/x.ts', '@@ -1 +1,2 @@', '+a', '+b'].join('\n');
     expect(parseUnifiedDiff(diff)).toEqual({ 'b/x.ts': [{ start: 1, end: 2 }] });
+  });
+});
+
+describe('stamp subcommand', () => {
+  interface Stamp {
+    id: string;
+    version: string;
+    sha256: string;
+  }
+  function isStampList(value: unknown): value is { extends: Stamp[] } {
+    return typeof value === 'object' && value !== null && 'extends' in value && Array.isArray(value.extends);
+  }
+
+  it('prints an extends block whose stamps match the shipped project example', async () => {
+    const { code, io } = await run(['stamp', 'hexagonal', 'softtor-conventions']);
+    expect(code).toBe(0);
+    const printed: unknown = parseYaml(io.out.join(''));
+    const example: unknown = parseYaml(readFileSync(join(PLUGIN_ROOT, 'rulebooks', 'project.example.rulebook.yaml'), 'utf8'));
+    if (!isStampList(printed) || !isStampList(example)) {
+      throw new Error('unexpected stamp output');
+    }
+    expect(printed.extends).toEqual(example.extends);
+    for (const stamp of printed.extends) {
+      const text = readFileSync(join(PLUGIN_ROOT, 'rulebooks', `${stamp.id}.rulebook.yaml`), 'utf8');
+      expect(stamp.sha256).toBe(sha256Of(text));
+    }
+  });
+
+  it('defaults to the hexagonal rulebook and rejects unknown ids', async () => {
+    const single = await run(['stamp']);
+    expect(single.code).toBe(0);
+    expect(single.io.out.join('')).toContain('id: hexagonal');
+    expect(single.io.out.join('')).not.toContain('softtor-conventions');
+    const unknown = await run(['stamp', 'nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.io.err.join('')).toContain("unknown rulebook 'nope'");
   });
 });

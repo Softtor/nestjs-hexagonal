@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { apiKey as resolveApiKey } from './lib/api-key.ts';
-import { RulebookCompositionError, semanticRulebookVersion, type ComposedRulebook } from './lib/compose.ts';
+import { RulebookCompositionError, readRulebookFile, rulebookPathForId, semanticRulebookVersion, sha256Of, type ComposedRulebook } from './lib/compose.ts';
 import { FittedFileError, loadFitted, type FittedFile } from './lib/decide.ts';
 import { readHookLogs, summarizeHookLogs } from './lib/hook-log.ts';
 import { createJevClient, type FetchLike } from './lib/jev-client.ts';
@@ -46,6 +46,8 @@ class UsageError extends Error {}
 
 const USAGE = `Usage: nestjs-hexagonal-check [options]
        nestjs-hexagonal-check export-logs --since <date> [--out <file>]
+       nestjs-hexagonal-check stamp [<id>...]
+       nestjs-hexagonal-check prescan --files <glob...> | --diff <base> [--semantic] [--format json|text]
 
   --rulebook <path|id>        rulebook to run; an id resolves to <plugin>/rulebooks/<id>.rulebook.yaml
   --project-rulebook <path>   project rulebook (default: $NESTJS_HEXAGONAL_RULEBOOK or $CLAUDE_PROJECT_DIR/.claude/rulebook.yaml)
@@ -488,7 +490,38 @@ function runExportLogs(argv: string[], io: CliIo, options: CliOptions): number {
   return 0;
 }
 
+const STAMP_USAGE = `Usage: nestjs-hexagonal-check stamp [<id>...]
+
+  Prints the extends block for a project rulebook: id, version and sha256 of
+  each plugin rulebook (default: hexagonal). Paste it under 'extends:' in
+  <project>/.claude/rulebook.yaml.
+`;
+
+function runStamp(argv: string[], io: CliIo, options: CliOptions): number {
+  const ids = argv.length === 0 ? ['hexagonal'] : argv;
+  const rulebooksDir = join(options.pluginRoot, 'rulebooks');
+  const lines: string[] = ['extends:'];
+  for (const id of ids) {
+    if (id.startsWith('--')) {
+      io.stderr(`unknown option '${id}'\n${STAMP_USAGE}`);
+      return 2;
+    }
+    const path = rulebookPathForId(rulebooksDir, id);
+    if (!existsSync(path)) {
+      io.stderr(`unknown rulebook '${id}' (no ${path})\n${STAMP_USAGE}`);
+      return 2;
+    }
+    const { rulebook, text } = readRulebookFile(path);
+    lines.push(`  - id: ${rulebook.id}`, `    version: ${rulebook.version}`, `    sha256: ${sha256Of(text)}`);
+  }
+  io.stdout(`${lines.join('\n')}\n`);
+  return 0;
+}
+
 export async function runCli(argv: string[], io: CliIo, options: CliOptions): Promise<number> {
+  if (argv[0] === 'stamp') {
+    return runStamp(argv.slice(1), io, options);
+  }
   if (argv[0] === 'export-logs') {
     return runExportLogs(argv.slice(1), io, options);
   }
