@@ -132,19 +132,23 @@ export const StateSchema = z.object({
 
 const Probability = z.number().min(0).max(1);
 
-export const NoulThresholdsSchema = z.object({
-  deny: Probability.optional(),
-  ask: Probability.optional(),
-  advise: Probability,
-  uncertain: z.object({ lo: Probability, hi: Probability }),
-});
+export const NoulThresholdsSchema = z
+  .object({
+    deny: Probability.optional(),
+    ask: Probability.optional(),
+    advise: Probability,
+    uncertain: z.object({ lo: Probability, hi: Probability }),
+  })
+  .strict();
 
-export const DistributionThresholdsSchema = z.object({
-  deny: Probability.optional(),
-  ask: Probability.optional(),
-  advise: Probability,
-  minConfidence: Probability,
-});
+export const DistributionThresholdsSchema = z
+  .object({
+    deny: Probability.optional(),
+    ask: Probability.optional(),
+    advise: Probability,
+    minConfidence: Probability,
+  })
+  .strict();
 
 export const ThresholdsSchema = z.union([NoulThresholdsSchema, DistributionThresholdsSchema]);
 
@@ -190,7 +194,7 @@ const RuleBaseSchema = z.object({
 
 export function validateThresholdsForQuestion(
   question: z.infer<typeof QuestionSchema> | undefined,
-  thresholds: z.infer<typeof ThresholdsSchema> | undefined,
+  thresholds: { [key: string]: unknown } | undefined,
 ): string | null {
   if (!thresholds) {
     return null;

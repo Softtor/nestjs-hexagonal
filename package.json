@@ -22,11 +22,14 @@
     "README.md"
   ],
   "scripts": {
-    "test": "bun test",
+    "test": "bun test ./scripts",
     "check": "bun scripts/check.ts"
   },
   "dependencies": {
     "yaml": "^2.8.1",
     "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2"
   }
 }

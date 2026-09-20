@@ -9,7 +9,7 @@
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "skipLibCheck": true,
-    "types": []
+    "types": ["bun"]
   },
   "include": ["scripts/**/*.ts"]
 }
