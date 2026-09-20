@@ -1,15 +1,17 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { existsSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { apiKey as resolveApiKey } from './lib/api-key.ts';
 import { RulebookCompositionError, readRulebookFile, rulebookPathForId, semanticRulebookVersion, sha256Of, type ComposedRulebook } from './lib/compose.ts';
 import { FittedFileError, loadFitted, type FittedFile } from './lib/decide.ts';
 import { readHookLogs, summarizeHookLogs } from './lib/hook-log.ts';
 import { createJevClient, type FetchLike } from './lib/jev-client.ts';
-import { changedFilesSince, projectSources, readSources } from './lib/project-files.ts';
+import { changedFilesSince, expandGlobs, projectSources, readSources } from './lib/project-files.ts';
+import { pluginDataPaths } from './lib/plugin-data-paths.ts';
+import { runPrescan } from './prescan.ts';
 import { RulebookNotFoundError, loadProjectRulebook } from './lib/project-rulebook.ts';
-import { matchGlob, normalizePath } from './lib/scope.ts';
+import { normalizePath } from './lib/scope.ts';
 import { MARKETPLACE_DATA_ID, resolveDataDir } from './lib/session-store.ts';
 import { explainRequests, planSemanticRequests, runSemanticRules, type SemanticExplain, type SemanticFinding, type Undecided } from './lib/semantic-engine.ts';
 import type { Hunk } from './lib/state-builder.ts';
@@ -61,7 +63,6 @@ const USAGE = `Usage: nestjs-hexagonal-check [options]
   --help                      show this message
 `;
 
-const IGNORED_DIRECTORIES = new Set(['node_modules', '.git']);
 const RULE_CLASSES: RuleClass[] = ['static', 'semantic', 'runtime'];
 
 function isRuleClass(value: string): value is RuleClass {
@@ -138,62 +139,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
     i += 1;
   }
   return parsed;
-}
-
-function walk(dir: string, base: string, out: string[]): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (IGNORED_DIRECTORIES.has(entry.name)) {
-      continue;
-    }
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walk(full, base, out);
-    } else if (entry.isFile()) {
-      out.push(normalizePath(relative(base, full)));
-    }
-  }
-}
-
-function expandGlobs(globs: string[], cwd: string): string[] {
-  const literal = globs.filter((pattern) => !/[*?{]/.test(pattern));
-  const patterns = globs.filter((pattern) => /[*?{]/.test(pattern));
-  const selected = new Set<string>();
-
-  for (const path of literal) {
-    const full = resolve(cwd, path);
-    if (!existsSync(full)) {
-      continue;
-    }
-    if (statSync(full).isDirectory()) {
-      const inside: string[] = [];
-      walk(full, cwd, inside);
-      for (const entry of inside) {
-        selected.add(entry);
-      }
-    } else if (statSync(full).isFile()) {
-      selected.add(normalizePath(relative(cwd, full)));
-    }
-  }
-
-  if (patterns.length > 0) {
-    const all: string[] = [];
-    walk(cwd, cwd, all);
-    for (const path of all) {
-      if (patterns.some((pattern) => matchGlob(pattern, path))) {
-        selected.add(path);
-      }
-    }
-  }
-
-  return [...selected].sort();
-}
-
-function changedFiles(base: string, cwd: string): string[] {
-  const files = changedFilesSince(base, cwd);
-  if (files === null) {
-    throw new UsageError(`--diff ${base}: git is unavailable or ${cwd} is not inside a repository`);
-  }
-  return files;
 }
 
 const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
@@ -318,14 +263,6 @@ function formatText(report: Report): string {
 
 function sortFindings(findings: AnyFinding[]): AnyFinding[] {
   return findings.sort((a, b) => a.path.localeCompare(b.path) || (a.line ?? 0) - (b.line ?? 0) || a.ruleId.localeCompare(b.ruleId));
-}
-
-function pluginDataPaths(env: Record<string, string | undefined>): { cacheDir?: string; logPath?: string; breakerPath?: string } {
-  const dataDir = env.CLAUDE_PLUGIN_DATA;
-  if (dataDir === undefined || dataDir === '') {
-    return {};
-  }
-  return { cacheDir: join(dataDir, 'cache'), logPath: join(dataDir, 'jev.jsonl'), breakerPath: join(dataDir, 'breaker.json') };
 }
 
 async function runSemantic(
@@ -519,6 +456,9 @@ function runStamp(argv: string[], io: CliIo, options: CliOptions): number {
 }
 
 export async function runCli(argv: string[], io: CliIo, options: CliOptions): Promise<number> {
+  if (argv[0] === 'prescan') {
+    return runPrescan(argv.slice(1), io, options);
+  }
   if (argv[0] === 'stamp') {
     return runStamp(argv.slice(1), io, options);
   }
@@ -555,7 +495,10 @@ export async function runCli(argv: string[], io: CliIo, options: CliOptions): Pr
     if (args.files.length === 0 && args.diff === undefined) {
       throw new UsageError('pass --files <glob...> or --diff <base>');
     }
-    const paths = args.diff !== undefined ? changedFiles(args.diff, options.cwd) : expandGlobs(args.files, options.cwd);
+    const paths = args.diff !== undefined ? changedFilesSince(args.diff, options.cwd) : expandGlobs(args.files, options.cwd);
+    if (paths === null) {
+      throw new UsageError(`--diff ${args.diff}: git is unavailable or ${options.cwd} is not inside a repository`);
+    }
     const hunksByPath = args.diff !== undefined && args.classes.includes('semantic') ? changedHunks(args.diff, options.cwd) : {};
     const files = readSources(paths, options.cwd);
     if (files.length === 0) {

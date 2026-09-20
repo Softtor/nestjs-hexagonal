@@ -17,6 +17,7 @@
     "scripts/check.ts",
     "scripts/hooks",
     "scripts/lib",
+    "scripts/prescan.ts",
     "scripts/run.sh",
     "shared",
     "skills",
