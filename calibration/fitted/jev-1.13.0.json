@@ -1,10 +1,10 @@
 {
   "pin": "jev-1.13.0",
-  "generatedAt": "2026-09-20T21:01:53.838Z",
+  "generatedAt": "2026-09-20T21:04:11.385Z",
   "rulebookVersion": "1.3.0",
   "rules": {
     "hex/controller-thin": {
-      "advise": 0.95,
+      "advise": 0.65,
       "ask": 0.95,
       "uncertain": {
         "lo": 0.35,
@@ -12,7 +12,7 @@
       }
     },
     "hex/entity-not-anemic": {
-      "advise": 0.9,
+      "advise": 0.65,
       "ask": 0.9,
       "uncertain": {
         "lo": 0.35,
@@ -20,7 +20,7 @@
       }
     },
     "hex/handler-no-business-rules": {
-      "advise": 0.85,
+      "advise": 0.65,
       "ask": 0.85,
       "uncertain": {
         "lo": 0.35,
@@ -28,12 +28,12 @@
       }
     },
     "hex/no-overengineering": {
-      "advise": 0.95,
+      "advise": 0.65,
       "ask": 0.95,
       "minConfidence": 0.6
     },
     "hex/port-no-infra-leak": {
-      "advise": 0.95,
+      "advise": 0.65,
       "ask": 0.95,
       "uncertain": {
         "lo": 0.35,

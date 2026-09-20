@@ -108,11 +108,11 @@ describe('fitRule', () => {
   it('pushes ask up to the advise cut when precision was already high below it', () => {
     const records = synthetic(10, 10, (i) => 0.05 + i * 0.01, (i) => (i < 8 ? 0.9 : 0.7));
     const fit = fitRule({ ruleId: 'hex/sample', records });
-    expect(fit.fitted.advise).toBe(0.7);
+    expect(fit.fitted.advise).toBe(0.65);
     expect(fit.fitted.ask).toBe(0.7);
     const shifted = synthetic(10, 10, (i) => (i < 2 ? 0.55 : 0.1), (i) => (i < 8 ? 0.9 : 0.7));
     const shiftedFit = fitRule({ ruleId: 'hex/sample', records: shifted });
-    expect(shiftedFit.fitted.advise).toBe(0.7);
+    expect(shiftedFit.fitted.advise).toBe(0.65);
     expect(shiftedFit.fitted.ask).toBe(0.7);
   });
 
@@ -120,7 +120,7 @@ describe('fitRule', () => {
     const records = synthetic(10, 10, (i) => 0.1 + i * 0.02, (i) => (i < 5 ? 0.52 + i * 0.01 : 0.9));
     const fit = fitRule({ ruleId: 'hex/sample', records, uncertain: { lo: 0.35, hi: 0.65 } });
     expect(fit.floor).toBe(0.65);
-    expect(fit.fitted.advise).toBe(0.9);
+    expect(fit.fitted.advise).toBe(0.65);
     expect(fit.fitted.ask).toBe(0.9);
     const inBand = fitRule({ ruleId: 'hex/sample', records: synthetic(10, 10, () => 0.1, (i) => 0.52 + i * 0.01), uncertain: { lo: 0.35, hi: 0.65 } });
     expect(inBand.fitted.advise).toBeUndefined();
@@ -130,12 +130,12 @@ describe('fitRule', () => {
     expect(wideBand.fitted.deny).toBe(0.72);
   });
 
-  it('breaks ties towards the highest cut', () => {
-    const records = synthetic(35, 35, () => 0.1, () => 0.9);
+  it('advise takes the lowest cut of the best-F1 plateau while ask and deny take the highest', () => {
+    const records = synthetic(35, 35, () => 0.1, () => 0.96);
     const fit = fitRule({ ruleId: 'hex/sample', records, uncertain: { lo: 0.35, hi: 0.65 } });
-    expect(fit.fitted.advise).toBe(0.9);
-    expect(fit.fitted.ask).toBe(0.9);
-    expect(fit.fitted.deny).toBe(0.9);
+    expect(fit.fitted.advise).toBe(0.65);
+    expect(fit.fitted.ask).toBe(0.95);
+    expect(fit.fitted.deny).toBe(0.95);
   });
 
   it('ignores errored records in the counts', () => {
@@ -151,12 +151,12 @@ describe('fitAll', () => {
     const byRule = new Map<string, ResultRecord[]>();
     byRule.set('hex/sample', synthetic(10, 10, (i) => 0.1 + i * 0.02, (i) => 0.78 + i * 0.02));
     const output = fitAll({ pin: 'jev-1.13.0', rulebookVersion: '1.3.0', rules: [], resultsByRule: byRule, generatedAt: '2026-09-20T00:00:00.000Z' });
-    expect(output.fittedFile).toMatchObject({ pin: 'jev-1.13.0', rulebookVersion: '1.3.0', rules: { 'hex/sample': { advise: 0.75, ask: 0.75, uncertain: { lo: 0.35, hi: 0.65 } } } });
+    expect(output.fittedFile).toMatchObject({ pin: 'jev-1.13.0', rulebookVersion: '1.3.0', rules: { 'hex/sample': { advise: 0.65, ask: 0.75, uncertain: { lo: 0.35, hi: 0.65 } } } });
     expect(output.fittedFile.rules['hex/sample']?.deny).toBeUndefined();
-    expect(output.report).toContain('| `hex/sample` | noul | 10 | 10 | 0 | 0.75 | 0.75 | omitted |');
+    expect(output.report).toContain('| `hex/sample` | noul | 10 | 10 | 0 | 0.65 | 0.75 | omitted |');
     expect(output.report).toContain('Also caught by static? (does not count)');
     expect(output.report).toContain('TODO=false');
-    expect(output.report).toContain('Cuts restricted to >= hi=0.65');
+    expect(output.report).toContain('Cuts restricted to >= hi=0.65; advise at the lowest cut of the best-F1 plateau, ask and deny at the highest cut of their plateau.');
     expect(output.report).toContain('| 0.9 |');
     expect(output.report).toContain('`deny` omitted: needs at least 30 good and 30 bad cases (have 10/10).');
   });

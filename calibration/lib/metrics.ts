@@ -175,7 +175,7 @@ export function fitRule(input: FitInput): FitResult {
   const fitted: FittedThresholds = {};
   const usable = grid.filter((entry) => entry.tp > 0);
 
-  const best = usable.reduce<CutMetrics | null>((current, entry) => (current === null || entry.f1 >= current.f1 ? entry : current), null);
+  const best = usable.reduce<CutMetrics | null>((current, entry) => (current === null || entry.f1 > current.f1 ? entry : current), null);
   if (best) {
     fitted.advise = best.cut;
   }
