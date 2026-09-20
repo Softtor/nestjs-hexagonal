@@ -18,6 +18,36 @@ Compatible with GSD workflow.
 7. **Write operations return void or `{ id: string }`** — CQRS strict
 8. **No over-engineering** — no use case for simple `findById`, no abstraction for single use, no generic relay patterns
 
+## Rulebook (machine-readable rules)
+
+`rulebooks/hexagonal.rulebook.yaml` encodes the rules above; `scripts/check.ts` (entry `scripts/run.sh`, bin `nestjs-hexagonal-check`) runs the static ones. Semantic and runtime rules are declared but inert in this version; nothing is sent over the network. Projects opt in with `.claude/rulebook.yaml` (`extends` with sha256 stamps, own rules, overrides by id); `NESTJS_HEXAGONAL_DISABLE=1` turns everything off.
+
+| Rule id | Class | Severity | Source |
+|---|---|---|---|
+| `hex/domain-no-nest-decorators` | static | FAIL | review D1, D3, D6, M3 |
+| `hex/entity-unique-id` | static | FAIL | review D5 |
+| `hex/vo-immutable` | static | FAIL | harness value-object-immutable |
+| `hex/repo-interface-in-domain` | static | FAIL | review D6 |
+| `hex/module-exports-ports-only` | static | FAIL | review I1 |
+| `hex/vo-no-class-validator` | static | FAIL | review D2, P1 |
+| `hex/no-circular-import` | static | FAIL | review M3, reviewer circular dependency |
+| `hex/event-payload-sufficient` | static | FAIL | reviewer insufficient event payload |
+| `hex/handler-max-lines` | static | WARN | reviewer god handler |
+| `hex/tests-use-builders` | static | WARN | review D7, T5 |
+| `hex/pattern-consistent` | static (external) | WARN | reviewer inconsistent pattern |
+| `hex/no-overengineering-static` | static (external) | WARN | reviewer over-engineering audit |
+| `hex/handler-no-business-rules` | semantic | FAIL | reviewer god handler |
+| `hex/port-no-infra-leak` | semantic | FAIL | review A6 |
+| `hex/entity-not-anemic` | semantic | WARN | reviewer anemic model |
+| `hex/controller-thin` | semantic | WARN | review P5 |
+| `hex/no-overengineering` | semantic (choice) | WARN | reviewer over-engineering audit |
+| `hex/tests-coverage` | runtime | WARN | review T1-T5 |
+| `softtor/tenant-scoped-query` | static | FAIL | review I7 (`softtor-conventions`) |
+| `softtor/no-emoji` | static | FAIL | Softtor style (`softtor-conventions`) |
+| `softtor/identifiers-english` | static | WARN | Softtor style (`softtor-conventions`) |
+
+Adding a static rule requires `calibration/golden/<rule-id>/{good,bad}/` fixtures (at least 2 each); `bun test ./scripts` enforces it. Keep `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` on the same version.
+
 ## Skills
 
 | Skill | When |
