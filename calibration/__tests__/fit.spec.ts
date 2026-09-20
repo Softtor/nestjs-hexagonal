@@ -1,0 +1,125 @@
+import '../../scripts/__tests__/helpers/no-network.ts';
+import { describe, expect, it } from 'bun:test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fitAll } from '../fit.ts';
+import { fitRule, metricsAtCut, wilson } from '../lib/metrics.ts';
+import { readResults, writeResults, type ResultRecord } from '../lib/results.ts';
+
+function record(overrides: Partial<ResultRecord> & { caseId: string; expected: ResultRecord['expected']; value: number }): ResultRecord {
+  return {
+    pin: 'jev-1.13.0',
+    model: 'jev-1.13.0',
+    ruleId: 'hex/sample',
+    primitive: 'noul',
+    answer: overrides.value,
+    latencyMs: 300,
+    inputTokens: 500,
+    cached: false,
+    ...overrides,
+  };
+}
+
+function synthetic(nGood: number, nBad: number, goodValues: (i: number) => number, badValues: (i: number) => number): ResultRecord[] {
+  const records: ResultRecord[] = [];
+  for (let i = 0; i < nGood; i += 1) {
+    records.push(record({ caseId: `good-${i}`, expected: 'ok', value: goodValues(i) }));
+  }
+  for (let i = 0; i < nBad; i += 1) {
+    records.push(record({ caseId: `bad-${i}`, expected: 'violation', value: badValues(i) }));
+  }
+  return records;
+}
+
+describe('wilson', () => {
+  it('matches the textbook interval for 9 of 10', () => {
+    const interval = wilson(9, 10);
+    expect(interval.lo).toBeCloseTo(0.596, 2);
+    expect(interval.hi).toBeCloseTo(0.982, 2);
+  });
+
+  it('is [0, 1] with no samples', () => {
+    expect(wilson(0, 0)).toEqual({ lo: 0, hi: 1 });
+  });
+});
+
+describe('metricsAtCut', () => {
+  it('counts tp, fp, fn, tn and lists the case ids of misses and false positives', () => {
+    const records = synthetic(3, 3, (i) => [0.1, 0.2, 0.75][i] ?? 0, (i) => [0.95, 0.8, 0.4][i] ?? 0);
+    const metrics = metricsAtCut(records, 0.7);
+    expect(metrics).toMatchObject({ tp: 2, fp: 1, fn: 1, tn: 2, falsePositives: ['good-2'], misses: ['bad-2'] });
+    expect(metrics.precision).toBeCloseTo(2 / 3);
+    expect(metrics.recall).toBeCloseTo(2 / 3);
+  });
+});
+
+describe('fitRule', () => {
+  it('fits advise at the best F1 and ask at the first cut with precision >= 0.85, and omits deny below 30/30', () => {
+    const records = synthetic(10, 10, (i) => (i === 0 ? 0.72 : 0.1 + i * 0.02), (i) => 0.78 + i * 0.02);
+    const fit = fitRule({ ruleId: 'hex/sample', records, uncertain: { lo: 0.35, hi: 0.65 } });
+    expect(fit.fitted.advise).toBe(0.75);
+    expect(fit.fitted.ask).toBe(0.5);
+    expect(fit.fitted.deny).toBeUndefined();
+    expect(fit.denyReason).toContain('at least 30 good and 30 bad');
+    expect(fit.fitted.uncertain).toEqual({ lo: 0.35, hi: 0.65 });
+    expect(fit.metrics.nGood).toBe(10);
+    expect(fit.metrics.nBad).toBe(10);
+  });
+
+  it('fits deny with 30/30 samples, precision >= 0.95 and zero false positives', () => {
+    const records = synthetic(35, 35, (i) => 0.05 + (i % 10) * 0.05, (i) => 0.86 + (i % 7) * 0.02);
+    const fit = fitRule({ ruleId: 'hex/sample', records, uncertain: { lo: 0.35, hi: 0.65 } });
+    expect(fit.fitted.deny).toBe(0.55);
+    expect(fit.denyReason).toBeNull();
+  });
+
+  it('omits deny when every qualifying cut still has a false positive', () => {
+    const records = synthetic(35, 35, (i) => (i === 0 ? 0.99 : 0.1), () => 0.9);
+    const fit = fitRule({ ruleId: 'hex/sample', records, uncertain: { lo: 0.35, hi: 0.65 } });
+    expect(fit.fitted.deny).toBeUndefined();
+    expect(fit.denyReason).toContain('zero false positives');
+  });
+
+  it('measures the uncertain rate inside the band for noul and below minConfidence for choice', () => {
+    const noul = synthetic(4, 0, (i) => [0.1, 0.4, 0.6, 0.9][i] ?? 0, () => 0);
+    expect(fitRule({ ruleId: 'hex/sample', records: noul, uncertain: { lo: 0.35, hi: 0.65 } }).metrics.uncertainRate).toBeCloseTo(0.5);
+    const choice = synthetic(2, 2, () => 0.1, () => 0.9).map((entry, index) => ({ ...entry, primitive: 'choice' as const, answer: 'none', confidence: index % 2 === 0 ? 0.4 : 0.9 }));
+    const fit = fitRule({ ruleId: 'hex/choice', records: choice, minConfidence: 0.6 });
+    expect(fit.metrics.uncertainRate).toBeCloseTo(0.5);
+    expect(fit.fitted.minConfidence).toBe(0.6);
+    expect(fit.fitted.uncertain).toBeUndefined();
+  });
+
+  it('ignores errored records in the counts', () => {
+    const records = [...synthetic(2, 2, () => 0.1, () => 0.9), record({ caseId: 'bad-x', expected: 'violation', value: 0, error: 'timeout' })];
+    const fit = fitRule({ ruleId: 'hex/sample', records });
+    expect(fit.metrics.nBad).toBe(2);
+    expect(fit.metrics.errors).toBe(1);
+  });
+});
+
+describe('fitAll', () => {
+  it('writes a fitted file keyed by rule id and a report with the per-rule table', () => {
+    const byRule = new Map<string, ResultRecord[]>();
+    byRule.set('hex/sample', synthetic(10, 10, (i) => 0.1 + i * 0.02, (i) => 0.78 + i * 0.02));
+    const output = fitAll({ pin: 'jev-1.13.0', rulebookVersion: '1.3.0', rules: [], resultsByRule: byRule, generatedAt: '2026-09-20T00:00:00.000Z' });
+    expect(output.fittedFile).toMatchObject({ pin: 'jev-1.13.0', rulebookVersion: '1.3.0', rules: { 'hex/sample': { advise: 0.5, ask: 0.5, uncertain: { lo: 0.35, hi: 0.65 } } } });
+    expect(output.fittedFile.rules['hex/sample']?.deny).toBeUndefined();
+    expect(output.report).toContain('| `hex/sample` | noul | 10 | 10 | 0 | 0.5 | 0.5 | omitted |');
+    expect(output.report).toContain('Also caught by static? (does not count)');
+    expect(output.report).toContain('TODO=false');
+    expect(output.report).toContain('| 0.9 |');
+    expect(output.report).toContain('`deny` omitted: needs at least 30 good and 30 bad cases (have 10/10).');
+  });
+});
+
+describe('results files', () => {
+  it('round-trips JSONL records and rejects malformed lines', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'results-'));
+    const records = synthetic(1, 1, () => 0.1, () => 0.9);
+    const path = writeResults(dir, 'hex/sample', records);
+    expect(path).toBe(join(dir, 'hex/sample.jsonl'));
+    expect(readResults(path)).toEqual(records);
+  });
+});

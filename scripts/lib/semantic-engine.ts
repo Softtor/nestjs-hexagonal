@@ -154,7 +154,7 @@ function evidenceFor(answer: JevAnswer, decision: Decision): string {
   }
 }
 
-async function runPool<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>): Promise<void> {
+export async function runPool<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>): Promise<void> {
   let next = 0;
   const lanes = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
     while (next < items.length) {
