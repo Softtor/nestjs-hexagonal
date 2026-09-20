@@ -103,6 +103,28 @@ describe('regex check', () => {
     expect(runStaticRules([rule], [handler]).findings).toHaveLength(1);
   });
 
+  it('drops matches whose enclosing declaration contains unlessInEnclosingDeclaration', () => {
+    const rule = makeRule({ check: { kind: 'regex', pattern: 'this\\.prisma\\.\\w+\\.findMany\\s*\\(', unlessInEnclosingDeclaration: 'organizationId' } });
+    const scoped = [
+      'class Repo {',
+      '  async list(organizationId: string) {',
+      '    const where = { organizationId };',
+      '    if (where) {',
+      '      return this.prisma.order.findMany({ where });',
+      '    }',
+      '  }',
+      '',
+      '  async all() {',
+      '    return this.prisma.order.findMany();',
+      '  }',
+      '}',
+      'const rows = this.prisma.order.findMany({ where: { organizationId: id } });',
+      'const leak = this.prisma.order.findMany();',
+    ].join('\n');
+    const result = runStaticRules([rule], [file('r.ts', scoped)]);
+    expect(result.findings.map((finding) => finding.line)).toEqual([10, 14]);
+  });
+
   it('respects the rule scope', () => {
     const rule = makeRule({ scope: { include: ['**/domain/**'], exclude: ['**/__tests__/**'] }, check: { kind: 'regex', pattern: 'x' } });
     const result = runStaticRules([rule], [file('bc/domain/a.ts', 'x'), file('bc/domain/__tests__/a.spec.ts', 'x'), file('bc/app/a.ts', 'x')]);
@@ -174,6 +196,13 @@ describe('line-count check', () => {
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]?.line).toBe(2);
     expect(result.findings[0]?.evidence).toContain('5 lines');
+  });
+
+  it('does not treat if/for/while/switch/catch blocks as methods', () => {
+    const rule = makeRule({ check: { kind: 'line-count', selector: 'method', max: 2 } });
+    const source = 'class H {\n  run(): void {\n    a();\n  }\n}\nif (x) {\n  a();\n  b();\n  c();\n}\nfor (const y of z) {\n  a();\n  b();\n  c();\n}\ntry {\n} catch (error) {\n  a();\n  b();\n  c();\n}';
+    const result = runStaticRules([rule], [file('k.ts', source)]);
+    expect(result.findings.map((finding) => finding.line)).toEqual([2]);
   });
 
   it('does not treat a call as a declaration', () => {
