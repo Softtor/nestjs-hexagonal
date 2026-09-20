@@ -12,7 +12,7 @@ extends:
     sha256: c4fe2a9c4187bb7c2b2b3524663691d1f68264f6e9fd84c96ecac69e7033c6a2
   - id: softtor-conventions
     version: 1.2.0
-    sha256: 27665c985dc162b255d6a8d48a6de96b620528b3129c8f3104930e90ff880bd1
+    sha256: 85df420053645555e421fe34e5363e97cec17f70f793f93ffc9bcff8e419271c
 model:
   provider: typesafe
   pin: jev-1.13.0

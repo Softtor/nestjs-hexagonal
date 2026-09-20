@@ -63,6 +63,5 @@ rules:
     source: Softtor conventions (identifiers in English)
     check:
       kind: regex
-      pattern: '\b(?:const|let|var|function|class|interface|type|enum)\s+\w*(?:(?:[cç][aã]o|[cç][oõ]es)(?=[A-Z_\d]|\b)|usuario|pedido|tarefa|mensagem|empresa|endereco|telefone|senha|buscar|atualizar|salvar|validar|enviar|criar|obter|cadastr)\w*'
-      flags: i
+      pattern: '\b(?:const|let|var|function|class|interface|type|enum)\s+\w*(?:(?:[cç][aã]o|[cç][oõ]es)(?=[A-Z_\d]|\b)|[Uu]suario|[Pp]edido|[Tt]arefa|[Mm]ensagem|[Ee]mpresa|[Ee]ndereco|[Tt]elefone|[Ss]enha|[Bb]uscar|[Aa]tualizar|[Ss]alvar|[Vv]alidar|[Ee]nviar|[Cc]riar|[Oo]bter|[Cc]adastr)\w*'
     tags: [style]

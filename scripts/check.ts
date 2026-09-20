@@ -149,7 +149,11 @@ function resolveRootRulebook(args: ParsedArgs, options: CliOptions): string {
 
   const candidates: Array<{ path: string; origin: string }> = [];
   if (args.projectRulebook !== undefined) {
-    candidates.push({ path: resolve(options.cwd, args.projectRulebook), origin: '--project-rulebook' });
+    const path = resolve(options.cwd, args.projectRulebook);
+    if (!existsSync(path)) {
+      throw new UsageError(`--project-rulebook ${args.projectRulebook} does not exist (${path})`);
+    }
+    return path;
   }
   const fromEnv = options.env.NESTJS_HEXAGONAL_RULEBOOK;
   if (fromEnv !== undefined && fromEnv !== '') {
@@ -189,7 +193,16 @@ function expandGlobs(globs: string[], cwd: string): string[] {
 
   for (const path of literal) {
     const full = resolve(cwd, path);
-    if (existsSync(full) && statSync(full).isFile()) {
+    if (!existsSync(full)) {
+      continue;
+    }
+    if (statSync(full).isDirectory()) {
+      const inside: string[] = [];
+      walk(full, cwd, inside);
+      for (const entry of inside) {
+        selected.add(entry);
+      }
+    } else if (statSync(full).isFile()) {
       selected.add(normalizePath(relative(cwd, full)));
     }
   }

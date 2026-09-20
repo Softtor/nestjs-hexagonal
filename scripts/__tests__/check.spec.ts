@@ -274,6 +274,23 @@ describe('runCli', () => {
     expect(report.findings.filter((finding) => finding.ruleId === 'hex/no-overengineering-static')).toEqual([]);
   });
 
+  it('walks a directory passed to --files', () => {
+    const { report } = runJson(['--rulebook', 'hexagonal', '--files', 'calibration/golden/hex/no-circular-import/bad']);
+    expect(report.findings.length).toBeGreaterThan(0);
+    expect(report.findings.every((finding) => finding.path.startsWith('calibration/golden/hex/no-circular-import/bad/'))).toBe(true);
+  });
+
+  it('exits 2 when --project-rulebook points to a missing file', () => {
+    const { code, io } = run(['--project-rulebook', 'missing.yaml', '--files', 'examples/**/*.ts']);
+    expect(code).toBe(2);
+    expect(io.err.join('')).toContain('missing.yaml');
+  });
+
+  it('keeps identifiers-english case-sensitive on the stems', () => {
+    const rule = baseRulebooks.flatMap(({ rulebook }) => rulebook.rules).find((entry) => entry.id === 'softtor/identifiers-english');
+    expect(rule?.check?.kind === 'regex' && rule.check.flags.includes('i')).toBe(false);
+  });
+
   it('treats --hook as a no-op in this version', () => {
     const { code, io } = run(['--hook', 'pre-tool-use']);
     expect(code).toBe(0);
