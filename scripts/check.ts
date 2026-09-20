@@ -14,7 +14,7 @@ import { loadFitted } from './lib/decide.ts';
 import { registerBuiltinExecutors } from './lib/executors/index.ts';
 import { createJevClient, type FetchLike } from './lib/jev-client.ts';
 import { matchGlob, normalizePath } from './lib/scope.ts';
-import { explainRequests, planSemanticRequests, runSemanticRules, type SemanticExplain, type SemanticFinding } from './lib/semantic-engine.ts';
+import { explainRequests, planSemanticRequests, runSemanticRules, type SemanticExplain, type SemanticFinding, type Undecided } from './lib/semantic-engine.ts';
 import type { Hunk } from './lib/state-builder.ts';
 import { runStaticRules, type Finding, type SourceFile } from './lib/static-engine.ts';
 import type { RuleClass } from './lib/rulebook.schema.ts';
@@ -251,7 +251,7 @@ export function parseUnifiedDiff(diff: string): Record<string, Hunk[]> {
   for (const line of diff.split('\n')) {
     if (line.startsWith('+++ ')) {
       const target = line.slice(4).trim();
-      current = target === '/dev/null' ? null : normalizePath(target.replace(/^b\//, ''));
+      current = target === '/dev/null' ? null : normalizePath(target);
       continue;
     }
     const header = HUNK_HEADER.exec(line);
@@ -267,7 +267,7 @@ export function parseUnifiedDiff(diff: string): Record<string, Hunk[]> {
 }
 
 function changedHunks(base: string, cwd: string): Record<string, Hunk[]> {
-  const diff = execFileSync('git', ['diff', '--unified=0', '--relative', '--diff-filter=ACMR', base], { cwd, encoding: 'utf8' });
+  const diff = execFileSync('git', ['diff', '--unified=0', '--no-prefix', '--relative', '--diff-filter=ACMR', base], { cwd, encoding: 'utf8' });
   return parseUnifiedDiff(diff);
 }
 
@@ -312,6 +312,7 @@ interface SemanticSummary {
   requests: number;
   cached: number;
   inputTokens: number;
+  undecided: Undecided[];
   skippedReason?: string;
 }
 
@@ -356,6 +357,13 @@ function formatText(report: Report): string {
       const calibration = finding.calibrated ? '' : ' [not calibrated]';
       lines.push(`${location(finding)} ${finding.severity} ${finding.ruleId}: ${finding.evidence}${calibration}`);
       lines.push(`  fix: ${finding.fix}`);
+    }
+  }
+  if (report.semantic && report.semantic.undecided.length > 0) {
+    lines.push('');
+    lines.push(`semantic undecided (${report.semantic.undecided.length}):`);
+    for (const entry of report.semantic.undecided) {
+      lines.push(`${entry.path} ${entry.ruleIds.join(', ')}: ${entry.reason}`);
     }
   }
   if (report.explain) {
@@ -413,13 +421,13 @@ async function runSemantic(
   const pin = composed.rulebook.model.pin;
   const empty = { findings: [], warnings: [], applied: {} };
   if (rules.length === 0) {
-    return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0 } };
+    return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, undecided: [] } };
   }
   const apiKey = options.env.TYPESAFE_API_KEY ?? options.env.CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY;
   if (apiKey === undefined || apiKey === '') {
     const reason = `TYPESAFE_API_KEY is not set; skipped ${rules.length} semantic rule(s)`;
     io.stderr(`${reason}\n`);
-    return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, skippedReason: reason } };
+    return { ...empty, summary: { requests: 0, cached: 0, inputTokens: 0, undecided: [], skippedReason: reason } };
   }
   const fitted = loadFitted(options.fittedDir ?? join(options.pluginRoot, 'calibration', 'fitted'), pin);
   const client = createJevClient({
@@ -439,7 +447,7 @@ async function runSemantic(
     findings: result.findings,
     warnings,
     applied: result.applied,
-    summary: { requests: result.requests, cached: result.cached, inputTokens: result.inputTokens },
+    summary: { requests: result.requests, cached: result.cached, inputTokens: result.inputTokens, undecided: result.undecided },
   };
 }
 
@@ -507,8 +515,9 @@ function exitCode(report: Report, args: ParsedArgs): number {
   if (staticFail || deny) {
     return 1;
   }
-  const undecided = report.findings.some((finding) => isSemantic(finding) && (finding.decision === 'uncertain' || finding.decision === 'uncalibrated'));
-  return args.failOnUncertain && undecided ? 3 : 0;
+  const uncertain = report.findings.some((finding) => isSemantic(finding) && (finding.decision === 'uncertain' || finding.decision === 'uncalibrated'));
+  const unanswered = (report.semantic?.undecided.length ?? 0) > 0;
+  return args.failOnUncertain && (uncertain || unanswered) ? 3 : 0;
 }
 
 export async function runCli(argv: string[], io: CliIo, options: CliOptions): Promise<number> {

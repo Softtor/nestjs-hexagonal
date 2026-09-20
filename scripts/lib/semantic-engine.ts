@@ -49,6 +49,12 @@ export interface SemanticRunOptions {
   concurrency?: number;
 }
 
+export interface Undecided {
+  path: string;
+  ruleIds: string[];
+  reason: string;
+}
+
 export interface SemanticRunResult {
   findings: SemanticFinding[];
   warnings: string[];
@@ -56,6 +62,11 @@ export interface SemanticRunResult {
   requests: number;
   cached: number;
   inputTokens: number;
+  undecided: Undecided[];
+}
+
+function answerMatches(rule: Rule, answer: JevAnswer): boolean {
+  return rule.question !== undefined && rule.question.type === answer.type;
 }
 
 function groupConfig(rules: Rule[], slice: Slice): StateConfig {
@@ -173,6 +184,7 @@ export async function runSemanticRules(rules: Rule[], files: SourceFile[], optio
   const plan = planSemanticRequests(rules, files, options.hunksByPath ?? {});
   const findings: SemanticFinding[] = [];
   const warnings: string[] = [];
+  const undecided: Undecided[] = [];
   const batches = plan.requests.flatMap((request) => {
     const dropped: string[] = [];
     const split = splitByBudget(request, dropped);
@@ -202,7 +214,7 @@ export async function runSemanticRules(rules: Rule[], files: SourceFile[], optio
           }
           for (const [ruleId, answer] of Object.entries(asked.answers)) {
             const rule = ruleById.get(ruleId);
-            if (rule) {
+            if (rule && answerMatches(rule, answer)) {
               decisions[ruleId] = decide(rule, answer, options.fitted?.rules[ruleId], { uncalibrated: options.uncalibrated || asked.uncalibrated }).decision;
             }
           }
@@ -213,6 +225,7 @@ export async function runSemanticRules(rules: Rule[], files: SourceFile[], optio
     if (!result.ok) {
       const status = result.status === undefined ? '' : ` ${result.status}`;
       warnings.push(`${batch.path}: jev ${result.error}${status} (${result.detail}); skipped ${Object.keys(batch.questions).join(', ')}`);
+      undecided.push({ path: batch.path, ruleIds: Object.keys(batch.questions), reason: result.error });
       return;
     }
     if (result.cached) {
@@ -222,16 +235,16 @@ export async function runSemanticRules(rules: Rule[], files: SourceFile[], optio
     for (const rule of batch.rules) {
       const answer = result.answers[rule.id];
       if (answer === undefined) {
-        warnings.push(`${batch.path}: jev returned no answer for ${rule.id}`);
+        warnings.push(`${batch.path}: jev returned no answer for ${rule.id}; skipped`);
+        undecided.push({ path: batch.path, ruleIds: [rule.id], reason: 'invalid-response' });
         continue;
       }
-      let outcome;
-      try {
-        outcome = decide(rule, answer, options.fitted?.rules[rule.id], { uncalibrated: options.uncalibrated || result.uncalibrated });
-      } catch (error) {
-        warnings.push(`${batch.path}: ${error instanceof Error ? error.message : String(error)}`);
+      if (!answerMatches(rule, answer)) {
+        warnings.push(`${batch.path}: jev answered ${answer.type} for ${rule.id} (expected ${rule.question?.type ?? 'unknown'}); skipped`);
+        undecided.push({ path: batch.path, ruleIds: [rule.id], reason: 'invalid-response' });
         continue;
       }
+      const outcome = decide(rule, answer, options.fitted?.rules[rule.id], { uncalibrated: options.uncalibrated || result.uncalibrated });
       if (outcome.decision === 'pass') {
         continue;
       }
@@ -254,5 +267,5 @@ export async function runSemanticRules(rules: Rule[], files: SourceFile[], optio
     }
   });
 
-  return { findings, warnings, applied: plan.applied, requests: batches.length, cached, inputTokens };
+  return { findings, warnings, applied: plan.applied, requests: batches.length, cached, inputTokens, undecided };
 }

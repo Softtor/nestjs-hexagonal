@@ -166,3 +166,19 @@ describe('runSemanticRules', () => {
     expect(result.findings).toEqual([expect.objectContaining({ decision: 'uncertain', evidence: 'jev noul=0.50 decision=uncertain' })]);
   });
 });
+
+describe('runSemanticRules with answers of the wrong primitive', () => {
+  it('skips the rule with a warning instead of throwing, and keeps the other answers', async () => {
+    const client = fakeClient((key) => (key === 'hex/no-overengineering' ? { type: 'noul', noul: 0.9 } : { type: 'noul', noul: 0.8 }));
+    const result = await runSemanticRules(rules, [handlerFile], { client, fitted: null, uncalibrated: false });
+    expect(result.findings.map((finding) => finding.ruleId)).toEqual(['hex/handler-no-business-rules']);
+    expect(result.warnings).toEqual([`${handlerFile.path}: jev answered noul for hex/no-overengineering (expected choice); skipped`]);
+    expect(result.undecided).toEqual([{ path: handlerFile.path, ruleIds: ['hex/no-overengineering'], reason: 'invalid-response' }]);
+    expect(client.decisions.flatMap((decision) => Object.keys(decision ?? {}))).not.toContain('hex/no-overengineering');
+  });
+
+  it('lists the rules of a failed batch as undecided', async () => {
+    const result = await runSemanticRules(rules, [portFile], { client: failingClient(), fitted: null, uncalibrated: false });
+    expect(result.undecided).toEqual([{ path: portFile.path, ruleIds: ['hex/port-no-infra-leak', 'hex/no-overengineering'], reason: 'rate-limited' }]);
+  });
+});

@@ -341,7 +341,7 @@ const noulOrNone = (p: number) => (key: string): unknown => (key === 'hex/no-ove
 
 interface SemanticJsonReport extends JsonReport {
   findings: Array<{ ruleId: string; severity: string; path: string; line?: number; class?: string; decision?: string; calibrated?: boolean; evidence?: string }>;
-  semantic?: { requests: number; cached: number; inputTokens: number; skippedReason?: string };
+  semantic?: { requests: number; cached: number; inputTokens: number; skippedReason?: string; undecided?: Array<{ path: string; ruleIds: string[]; reason: string }> };
   explainSemantic?: Array<{ path: string; slice: string; code: string; questions: Record<string, { type: string; instructions: string }> }>;
 }
 
@@ -445,7 +445,32 @@ describe('runCli with fitted thresholds', () => {
 
 describe('parseUnifiedDiff', () => {
   it('maps new-side hunk ranges by path', () => {
-    const diff = ['diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -3,0 +4,2 @@', '+x', '+y', '@@ -10 +12 @@', '+z', 'diff --git a/src/b.ts b/src/b.ts', '--- a/src/b.ts', '+++ /dev/null', '@@ -1,3 +0,0 @@'].join('\n');
+    const diff = ['diff --git src/a.ts src/a.ts', '--- src/a.ts', '+++ src/a.ts', '@@ -3,0 +4,2 @@', '+x', '+y', '@@ -10 +12 @@', '+z', 'diff --git src/b.ts src/b.ts', '--- src/b.ts', '+++ /dev/null', '@@ -1,3 +0,0 @@'].join('\n');
     expect(parseUnifiedDiff(diff)).toEqual({ 'src/a.ts': [{ start: 4, end: 5 }, { start: 12, end: 12 }] });
+  });
+});
+
+describe('runCli undecided semantic batches', () => {
+  const handler = 'examples/order-bounded-context/application/commands/cancel-order.handler.ts';
+  const rejecting: FetchLike = () => Promise.resolve(new Response('{}', { status: 401 }));
+
+  it('exits 3 with --strict --fail-on-uncertain when Jev could not answer, and 0 without the flag', async () => {
+    const strictUncertain = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic', '--strict', '--fail-on-uncertain'], { TYPESAFE_API_KEY: SEMANTIC_KEY }, PLUGIN_ROOT, rejecting);
+    expect(strictUncertain.code).toBe(3);
+    expect(asSemanticReport(strictUncertain.report).semantic?.undecided).toEqual([
+      { path: handler, ruleIds: ['hex/handler-no-business-rules'], reason: 'http' },
+      { path: handler, ruleIds: ['hex/no-overengineering'], reason: 'http' },
+    ]);
+    const strictOnly = await runJson(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic', '--strict'], { TYPESAFE_API_KEY: SEMANTIC_KEY }, PLUGIN_ROOT, rejecting);
+    expect(strictOnly.code).toBe(0);
+    const text = await run(['--rulebook', 'hexagonal', '--files', handler, '--classes', 'semantic'], { TYPESAFE_API_KEY: SEMANTIC_KEY }, PLUGIN_ROOT, rejecting);
+    expect(text.io.out.join('')).toContain('semantic undecided (2):');
+  });
+});
+
+describe('parseUnifiedDiff without prefixes', () => {
+  it('keeps a path whose first segment is literally b', () => {
+    const diff = ['diff --git b/x.ts b/x.ts', '--- b/x.ts', '+++ b/x.ts', '@@ -1 +1,2 @@', '+a', '+b'].join('\n');
+    expect(parseUnifiedDiff(diff)).toEqual({ 'b/x.ts': [{ start: 1, end: 2 }] });
   });
 });
