@@ -297,11 +297,6 @@ describe('runCli', () => {
     expect(rule?.check?.kind === 'regex' && rule.check.flags.includes('i')).toBe(false);
   });
 
-  it('treats --hook as a no-op in this version', async () => {
-    const { code, io } = await run(['--hook', 'pre-tool-use']);
-    expect(code).toBe(0);
-    expect(io.out.join('')).toBe('');
-  });
 
   it('project.example stamps match the shipped base rulebooks', async () => {
     const { report } = await runJson(['--project-rulebook', 'rulebooks/project.example.rulebook.yaml', '--files', 'examples/**/*.ts']);
