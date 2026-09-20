@@ -8,7 +8,7 @@ import type { Rule } from '../scripts/lib/rulebook.schema.ts';
 import { runPool } from '../scripts/lib/semantic-engine.ts';
 import { buildState } from '../scripts/lib/state-builder.ts';
 import { loadGoldenCases, type GoldenCase } from './lib/golden.ts';
-import { writeResults, type ResultRecord } from './lib/results.ts';
+import { appendResult, openResults, type ResultRecord } from './lib/results.ts';
 
 export const DEFAULT_MAX_REQUESTS = 500;
 export const DEFAULT_CONCURRENCY = 4;
@@ -44,6 +44,9 @@ async function askCase(rule: Rule, item: GoldenCase, options: RunCalibrationOpti
   if (answer === undefined) {
     return { ...base, model: result.model, value: 0, answer: '', latencyMs: result.latencyMs, inputTokens: result.usage.inputTokens, error: 'no answer for the rule id' };
   }
+  if (answer.type !== question.type) {
+    return { ...base, model: result.model, value: 0, answer: '', latencyMs: result.latencyMs, inputTokens: result.usage.inputTokens, error: `answer type ${answer.type} does not match question type ${question.type}` };
+  }
   const outcome = decide(rule, answer);
   const record: ResultRecord = {
     ...base,
@@ -78,9 +81,39 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<Ru
   }
 
   const records = new Map<string, ResultRecord[]>();
+  const paths = new Map<string, string>();
+  for (const rule of semanticRules) {
+    if (work.some((entry) => entry.rule.id === rule.id)) {
+      paths.set(rule.id, openResults(options.outDir, rule.id));
+      records.set(rule.id, []);
+    }
+  }
   let done = 0;
   await runPool(work, options.concurrency ?? DEFAULT_CONCURRENCY, async ({ rule, item }) => {
-    const record = await askCase(rule, item, options);
+    let record: ResultRecord;
+    try {
+      record = await askCase(rule, item, options);
+    } catch (error) {
+      const question = rule.question;
+      record = {
+        pin: options.pin,
+        model: options.pin,
+        ruleId: rule.id,
+        caseId: item.caseId,
+        expected: item.expected,
+        primitive: question?.type ?? 'noul',
+        value: 0,
+        answer: '',
+        latencyMs: 0,
+        inputTokens: 0,
+        cached: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    const path = paths.get(rule.id);
+    if (path !== undefined) {
+      appendResult(path, record);
+    }
     const list = records.get(rule.id) ?? [];
     list.push(record);
     records.set(rule.id, list);
@@ -93,7 +126,10 @@ export async function runCalibration(options: RunCalibrationOptions): Promise<Ru
   for (const [ruleId, list] of records) {
     list.sort((a, b) => a.expected.localeCompare(b.expected) || a.caseId.localeCompare(b.caseId));
     errors += list.filter((record) => record.error !== undefined).length;
-    files.push(writeResults(options.outDir, ruleId, list));
+    const path = paths.get(ruleId);
+    if (path !== undefined) {
+      files.push(path);
+    }
   }
   return { ok: true, records, requests: work.length, errors, files: files.sort() };
 }

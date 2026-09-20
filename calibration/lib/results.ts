@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
@@ -29,6 +29,17 @@ export function writeResults(outDir: string, ruleId: string, records: ResultReco
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, records.map((record) => JSON.stringify(record)).join('\n') + (records.length > 0 ? '\n' : ''));
   return path;
+}
+
+export function openResults(outDir: string, ruleId: string): string {
+  const path = resultPath(outDir, ruleId);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, '');
+  return path;
+}
+
+export function appendResult(path: string, record: ResultRecord): void {
+  appendFileSync(path, `${JSON.stringify(record)}\n`);
 }
 
 export function readResults(path: string): ResultRecord[] {

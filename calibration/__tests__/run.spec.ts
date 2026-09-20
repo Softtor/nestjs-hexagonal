@@ -1,7 +1,7 @@
 import '../../scripts/__tests__/helpers/no-network.ts';
 import { assertNetworkForbidden } from '../../scripts/__tests__/helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { readRulebookFile } from '../../scripts/lib/compose.ts';
@@ -87,6 +87,52 @@ describe('runCalibration', () => {
     if (!result.ok) throw new Error(result.error);
     expect(result.errors).toBe(result.requests);
     expect((result.records.get(rule.id) ?? [])[0]?.error).toBe('timeout: no response within 15000 ms');
+  });
+});
+
+describe('runCalibration resilience', () => {
+  const rule = semanticRules.find((entry) => entry.id === 'hex/no-overengineering');
+
+  it('records a mismatched primitive and a throwing client as error records without aborting the run', async () => {
+    if (!rule) throw new Error('rule missing');
+    let calls = 0;
+    const flaky: JevClient = {
+      ask(request) {
+        calls += 1;
+        if (calls === 1) {
+          const answers: Record<string, JevAnswer> = {};
+          for (const key of Object.keys(request.questions)) {
+            answers[key] = { type: 'noul', noul: 0.9 };
+          }
+          return Promise.resolve({ ok: true, answers, model: 'jev-1.13.0', usage: { inputTokens: 1, outputTokens: 1 }, latencyMs: 1, cached: false, uncalibrated: false });
+        }
+        return Promise.reject(new Error('socket hang up'));
+      },
+    };
+    const outDir = mkdtempSync(join(tmpdir(), 'calibration-out-'));
+    const result = await runCalibration({ rules: [rule], goldenRoot: GOLDEN_ROOT, pluginRoot: PLUGIN_ROOT, outDir, pin: 'jev-1.13.0', client: flaky, concurrency: 1 });
+    if (!result.ok) throw new Error(result.error);
+    const cases = loadGoldenCases(GOLDEN_ROOT, rule.id, PLUGIN_ROOT);
+    const records = readResults(result.files[0] ?? '');
+    expect(records).toHaveLength(cases.length);
+    expect(result.errors).toBe(cases.length);
+    expect(records.filter((record) => record.error === 'answer type noul does not match question type choice')).toHaveLength(1);
+    expect(records.filter((record) => record.error === 'socket hang up')).toHaveLength(cases.length - 1);
+  });
+
+  it('appends each record to the JSONL as soon as it arrives', async () => {
+    if (!rule) throw new Error('rule missing');
+    const outDir = mkdtempSync(join(tmpdir(), 'calibration-out-'));
+    const path = join(outDir, 'hex', 'no-overengineering.jsonl');
+    const seen: number[] = [];
+    const observing: JevClient = {
+      ask(request) {
+        seen.push(existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n').filter((line) => line !== '').length : 0);
+        return fakeClient().ask(request);
+      },
+    };
+    await runCalibration({ rules: [rule], goldenRoot: GOLDEN_ROOT, pluginRoot: PLUGIN_ROOT, outDir, pin: 'jev-1.13.0', client: observing, concurrency: 1 });
+    expect(seen.slice(0, 3)).toEqual([0, 1, 2]);
   });
 });
 
