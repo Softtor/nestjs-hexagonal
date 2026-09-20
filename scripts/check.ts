@@ -219,6 +219,37 @@ function changedFiles(base: string, cwd: string): string[] {
   return [...new Set(paths)].sort();
 }
 
+const PROJECT_TREE_IGNORED = new Set(['node_modules', '.git', 'dist']);
+const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
+
+function projectRoot(cwd: string): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || cwd;
+  } catch {
+    return cwd;
+  }
+}
+
+function walkTree(dir: string, cwd: string, out: string[]): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (PROJECT_TREE_IGNORED.has(entry.name)) {
+      continue;
+    }
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkTree(full, cwd, out);
+    } else if (entry.isFile() && SOURCE_EXTENSIONS.some((extension) => entry.name.endsWith(extension))) {
+      out.push(normalizePath(relative(cwd, full)));
+    }
+  }
+}
+
+function projectSources(cwd: string): SourceFile[] {
+  const paths: string[] = [];
+  walkTree(projectRoot(cwd), cwd, paths);
+  return readSources(paths, cwd);
+}
+
 function readSources(paths: string[], cwd: string): SourceFile[] {
   return paths.map((path) => ({ path, content: readFileSync(resolve(cwd, path), 'utf8') }));
 }
@@ -254,7 +285,7 @@ function formatText(report: Report): string {
   return `${lines.join('\n')}\n`;
 }
 
-function buildReport(composed: ComposedRulebook, rulebookPath: string, files: SourceFile[], args: ParsedArgs, io: CliIo): Report {
+function buildReport(composed: ComposedRulebook, rulebookPath: string, files: SourceFile[], args: ParsedArgs, io: CliIo, cwd: string): Report {
   const skipped: Report['skipped'] = { semantic: [], runtime: [] };
   for (const cls of args.classes) {
     if (cls === 'static') {
@@ -268,7 +299,7 @@ function buildReport(composed: ComposedRulebook, rulebookPath: string, files: So
   }
 
   const staticResult = args.classes.includes('static')
-    ? runStaticRules(composed.rules, files)
+    ? runStaticRules(composed.rules, files, { projectFiles: () => projectSources(cwd) })
     : { findings: [], warnings: [], applied: {} };
 
   const report: Report = {
@@ -319,7 +350,7 @@ export function runCli(argv: string[], io: CliIo, options: CliOptions): number {
       io.stderr(`warning: no files matched ${args.diff !== undefined ? `--diff ${args.diff}` : args.files.join(' ')}; nothing was checked\n`);
     }
 
-    const report = buildReport(composed, rulebookPath, files, args, io);
+    const report = buildReport(composed, rulebookPath, files, args, io, options.cwd);
     for (const warning of report.warnings) {
       io.stderr(`warning: ${warning}\n`);
     }

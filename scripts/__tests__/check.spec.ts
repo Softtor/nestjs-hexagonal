@@ -255,6 +255,25 @@ describe('runCli', () => {
     expect(globs.io.err.join('')).toContain('no files');
   });
 
+  it('counts over the git tree when --diff narrows the checked set', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hex-git-tree-'));
+    const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q', '-b', 'main');
+    mkdirSync(join(dir, 'src', 'x', 'application', 'helpers'), { recursive: true });
+    mkdirSync(join(dir, 'src', 'x', 'application', 'commands'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'x', 'application', 'helpers', 'normalize.ts'), 'export function normalizeName(name: string): string {\n  return name.trim();\n}\n');
+    writeFileSync(join(dir, 'src', 'x', 'application', 'commands', 'a.handler.ts'), "import { normalizeName } from '../helpers/normalize';\nnormalizeName('a');\n");
+    writeFileSync(join(dir, 'src', 'x', 'application', 'commands', 'b.handler.ts'), "import { normalizeName } from '../helpers/normalize';\nnormalizeName('b');\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    writeFileSync(join(dir, 'src', 'x', 'application', 'helpers', 'normalize.ts'), 'export function normalizeName(name: string): string {\n  return name.trim().toLowerCase();\n}\n');
+    writeFileSync(join(dir, 'src', 'x', 'application', 'commands', 'a.handler.ts'), "import { normalizeName } from '../helpers/normalize';\nnormalizeName('A');\n");
+    git('add', '.');
+    git('commit', '-q', '-m', 'touch helper and one caller');
+    const { report } = runJson(['--rulebook', 'hexagonal', '--diff', 'HEAD~1'], {}, join(dir, 'src'));
+    expect(report.findings.filter((finding) => finding.ruleId === 'hex/no-overengineering-static')).toEqual([]);
+  });
+
   it('treats --hook as a no-op in this version', () => {
     const { code, io } = run(['--hook', 'pre-tool-use']);
     expect(code).toBe(0);

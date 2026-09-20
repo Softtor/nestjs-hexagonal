@@ -18,6 +18,10 @@ export interface Finding {
 
 export type Executor = (rule: Rule, scopedFiles: SourceFile[], allFiles: SourceFile[]) => Finding[];
 
+export interface StaticRunOptions {
+  projectFiles?: () => SourceFile[];
+}
+
 export interface StaticRunResult {
   findings: Finding[];
   warnings: string[];
@@ -285,10 +289,17 @@ export function runCheckOnFile(rule: Rule, check: Check, file: SourceFile): Find
   }
 }
 
-export function runStaticRules(rules: Rule[], files: SourceFile[]): StaticRunResult {
+export function runStaticRules(rules: Rule[], files: SourceFile[], options: StaticRunOptions = {}): StaticRunResult {
   const findings: Finding[] = [];
   const warnings: string[] = [];
   const applied: Record<string, string[]> = {};
+  let projectFiles: SourceFile[] | null = null;
+  const resolveProjectFiles = (): SourceFile[] => {
+    if (projectFiles === null) {
+      projectFiles = options.projectFiles ? options.projectFiles() : files;
+    }
+    return projectFiles;
+  };
 
   for (const rule of rules) {
     if (rule.class !== 'static' || !rule.check) {
@@ -308,7 +319,7 @@ export function runStaticRules(rules: Rule[], files: SourceFile[]): StaticRunRes
         warnings.push(`rule ${rule.id}: external executor '${rule.check.executorId}' is not registered; skipped`);
         continue;
       }
-      findings.push(...executor(rule, scoped, files));
+      findings.push(...executor(rule, scoped, resolveProjectFiles()));
       continue;
     }
 

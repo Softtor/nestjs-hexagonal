@@ -128,3 +128,28 @@ describe('hex/no-overengineering-static executor', () => {
     expect(result.findings).toHaveLength(0);
   });
 });
+
+describe('counts over the project tree', () => {
+  const rule = externalRule('hex/no-overengineering-static', 'hex/no-overengineering-static', ['**/application/**/*.ts']);
+  const helper = 'export function normalizeName(name: string): string {\n  return name.trim();\n}';
+  const helperFile = file('src/x/application/helpers/normalize.ts', helper);
+  const callerA = file('src/x/application/commands/a.handler.ts', 'normalizeName(x);');
+  const callerB = file('src/x/application/commands/b.handler.ts', 'normalizeName(y);');
+
+  it('does not flag a helper with two callers in the project when only one is in the checked set', () => {
+    const result = runStaticRules([rule], [helperFile, callerA], { projectFiles: () => [helperFile, callerA, callerB] });
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it('still flags a helper whose only caller lives outside the checked set', () => {
+    const result = runStaticRules([rule], [helperFile], { projectFiles: () => [helperFile, callerB] });
+    expect(result.findings).toHaveLength(1);
+  });
+
+  it('does not count a port consumer only because it is in the checked set', () => {
+    const port = file('src/x/application/ports/mail.port.ts', "export const MAIL_PORT = Symbol('MailPort');");
+    const consumer = file('src/x/infrastructure/send.adapter.ts', 'constructor(@Inject(MAIL_PORT) mail: MailPort) {}');
+    const result = runStaticRules([rule], [port], { projectFiles: () => [port, consumer] });
+    expect(result.findings).toHaveLength(0);
+  });
+});
