@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "Despite the comment claiming the rule is exempt, the actual signature only uses string, number, Date and Promise<void>, so no infrastructure type is named and it is fine."
+}

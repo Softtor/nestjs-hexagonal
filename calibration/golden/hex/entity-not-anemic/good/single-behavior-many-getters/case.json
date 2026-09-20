@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "close() throws on an invalid transition before mutating state; the remaining six members are plain getters, which the rule explicitly allows alongside one behavior method."
+}

@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "Both methods resolve to `HttpStatus`, an HTTP status code type, tying the port's contract to the transport layer."
+}

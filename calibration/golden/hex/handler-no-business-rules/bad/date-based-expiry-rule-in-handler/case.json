@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler computes coupon age from createdAt and enforces the 30-day expiry rule itself instead of asking coupon.isExpired() or similar." }

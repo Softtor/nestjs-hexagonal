@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "each method calls the execute() of exactly one injected handler and returns it directly, adding no logic or composition of its own; matches delegating-service."
+}

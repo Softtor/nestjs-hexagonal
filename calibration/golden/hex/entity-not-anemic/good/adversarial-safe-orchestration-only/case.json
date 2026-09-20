@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The comment labels cancel() as safe orchestration wiring, but it throws on double cancellation and conditionally sets three fields, which is behavior, not wiring."
+}

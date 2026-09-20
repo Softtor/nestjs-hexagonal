@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The switch on ticket.status decides and assigns the next status directly in the handler, bypassing a ticket transition method." }

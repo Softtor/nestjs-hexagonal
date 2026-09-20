@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The TODO comment falsely claims an S3 leak, but the actual signature only returns plain strings (`labelUrl`, `trackingCode`) with no S3 or AWS type present, so it is fine."
+}

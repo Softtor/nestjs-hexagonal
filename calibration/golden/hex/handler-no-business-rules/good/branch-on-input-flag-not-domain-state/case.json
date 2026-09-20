@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The if branches on command.notifyCustomer, a caller-supplied flag, not on domain state, and it does not change what is persisted, only an optional side call." }

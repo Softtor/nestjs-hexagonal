@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Roles restricts who may call the endpoint at the framework level; the handler body still only forwards the DTO into a command dispatch." }

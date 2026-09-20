@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "Both methods take `Prisma.InvoiceWhereInput`, an ORM query-builder type, binding every consumer of the port to Prisma."
+}

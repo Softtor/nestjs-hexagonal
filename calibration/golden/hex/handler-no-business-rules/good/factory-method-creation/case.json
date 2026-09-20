@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Line items and totals are handed unmodified to InvoiceEntity.create(); the handler computes nothing, it only wires input into the factory." }

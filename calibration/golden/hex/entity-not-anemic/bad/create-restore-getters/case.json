@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "static create just stamps createdAt and forwards props with no validation, static restore rehydrates, and every remaining member is a getter."
+}

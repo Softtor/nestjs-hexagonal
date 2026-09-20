@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The TODO comment is a distraction rather than a false alarm here: applyToOrder() genuinely throws on ineligibility before mutating state, so the class is not anemic regardless of the comment's wording."
+}

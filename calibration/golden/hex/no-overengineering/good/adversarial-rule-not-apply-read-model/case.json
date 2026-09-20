@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "the 'rule does not apply here' comment is noise; the read model genuinely aggregates booked and cancelled slots per staff member across a week, which one findById cannot answer, so it is not trivial-read-model."
+}

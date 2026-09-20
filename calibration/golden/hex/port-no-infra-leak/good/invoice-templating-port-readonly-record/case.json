@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "`Readonly<Record<string, string>>` for template variables is a plain TypeScript structural type, not a templating engine's own type, so no infrastructure is named."
+}

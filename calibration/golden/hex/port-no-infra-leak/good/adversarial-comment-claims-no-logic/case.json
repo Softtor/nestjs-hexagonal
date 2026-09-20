@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "The signature only uses primitives, a union literal type and Date/void; the misleading comment does not introduce any infrastructure type and must be ignored by the classifier."
+}

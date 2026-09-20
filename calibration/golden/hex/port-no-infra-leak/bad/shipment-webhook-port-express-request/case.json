@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "The method takes Express's `Request`/`Response` HTTP types directly, coupling the application port to the web framework."
+}

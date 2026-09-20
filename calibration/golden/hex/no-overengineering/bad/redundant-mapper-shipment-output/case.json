@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "a free function mapper that returns the same getters as the entity's own shape, field by field, with nothing renamed, computed or omitted; matches redundant-mapper."
+}

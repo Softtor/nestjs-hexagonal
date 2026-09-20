@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "addLine() is a child entity (not the aggregate root) but enforces two invariants with throws before mutating the lines array, so it still counts as behavior."
+}

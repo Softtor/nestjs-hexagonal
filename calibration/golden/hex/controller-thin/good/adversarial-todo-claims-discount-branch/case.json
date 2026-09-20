@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The misleading TODO claims a discount branch exists, but the executable statement is a single pass-through command dispatch with no computation or branching." }

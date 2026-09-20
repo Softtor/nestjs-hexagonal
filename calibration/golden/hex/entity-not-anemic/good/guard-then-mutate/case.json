@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "withdraw() throws when the amount exceeds the balance and only decrements balanceCents on the guarded path, enforcing an invariant."
+}

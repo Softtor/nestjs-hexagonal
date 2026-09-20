@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "looks like a trivial findById wrapper but adds an organization ownership check and calls a mapper, which justifies the handler; not trivial-use-case."
+}

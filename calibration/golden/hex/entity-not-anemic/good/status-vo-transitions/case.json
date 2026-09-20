@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "markDelivered() delegates the transition to the status VO but also sets deliveredAt and applies a domain event in the same method body, which is visible behavior in the file."
+}

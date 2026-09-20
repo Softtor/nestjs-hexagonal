@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "redeem() throws on an expired coupon and, on the valid path, mutates state and applies CouponRedeemedEvent."
+}

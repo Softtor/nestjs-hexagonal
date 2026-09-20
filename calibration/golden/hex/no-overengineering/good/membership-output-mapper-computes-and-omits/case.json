@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "renames holderName to memberName, computes daysRemaining and isExpiringSoon from expiresAt, and omits internal fields; not a redundant-mapper."
+}

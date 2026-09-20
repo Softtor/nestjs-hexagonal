@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "this.repository.findById(...) is called directly from the controller instead of dispatching a query through the query bus or a use case." }

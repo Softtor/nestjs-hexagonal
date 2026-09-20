@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The reserve decision stays inside item.reserve(); the handler only re-reads and retries once on an optimistic-concurrency conflict, which is orchestration." }

@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Custom param decorators only resolve request-scoped values; the body still just builds and dispatches a command." }

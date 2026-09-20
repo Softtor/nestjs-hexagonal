@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "`uploadPhoto` takes `S3.PutObjectCommandInput` from the AWS SDK, exposing the object storage vendor's request shape."
+}

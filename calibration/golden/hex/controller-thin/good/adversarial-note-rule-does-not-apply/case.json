@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The comment claims the rule is exempt, but the rule applies uniformly by scope and the code itself is a plain query dispatch plus the allowed not-found check." }

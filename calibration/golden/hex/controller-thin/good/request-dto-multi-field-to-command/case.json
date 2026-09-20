@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Several DTO fields are copied one-to-one into the command constructor; no field is derived, summed or validated against business rules here." }

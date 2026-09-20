@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "The return type wraps the domain payload in `AxiosResponse<...>`, exposing the HTTP client library used by the adapter."
+}

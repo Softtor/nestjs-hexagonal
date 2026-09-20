@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "Authorization is delegated to policy.canClose(); the handler only throws when denied and calls ticket.close(), which is permitted orchestration." }

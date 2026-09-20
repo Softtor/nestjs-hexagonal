@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler branches on wallet.tier to pick a fee rate and multiplies it into a fee amount itself, a business calculation that belongs to the wallet aggregate or a fee policy value object." }

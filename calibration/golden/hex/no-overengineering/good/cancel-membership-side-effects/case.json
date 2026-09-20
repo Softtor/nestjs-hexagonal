@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "a command handler with an ownership check, an entity method call and an event commit; real orchestration, not a trivial-use-case."
+}

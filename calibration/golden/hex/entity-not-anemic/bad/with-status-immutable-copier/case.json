@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "withStatus() unconditionally returns a new instance with the given status and no validation, throw or event, so it is a setter-shaped copier rather than enforced behavior."
+}

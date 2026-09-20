@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "the query is called ListActive but execute() just calls repository.findAll() with no filter, auth check, mapping or event; matches trivial-use-case."
+}

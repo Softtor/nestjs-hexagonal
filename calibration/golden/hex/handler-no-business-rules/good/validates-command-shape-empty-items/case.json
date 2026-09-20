@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The empty-array check guards command shape (presence), not a business outcome; creation itself is delegated to ShipmentEntity.create()." }

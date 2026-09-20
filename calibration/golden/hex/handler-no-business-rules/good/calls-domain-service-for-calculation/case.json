@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The fee amount is computed by the injected TransferFeeCalculator domain service, not by handler statements; the handler only wires the result into debit()/credit()." }

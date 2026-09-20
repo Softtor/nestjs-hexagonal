@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "a denormalized projection table is maintained just to answer the balance of one wallet, which the existing findById on the indexed wallet table already answers; matches trivial-read-model."
+}

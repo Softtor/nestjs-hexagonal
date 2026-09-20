@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "execute() only forwards to repository.findById and returns it verbatim, with no authorization check, mapping, side effect or event; matches trivial-use-case."
+}

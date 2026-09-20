@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "`charge` returns `Stripe.PaymentIntent`, the vendor SDK's own payload type, instead of a domain-shaped result."
+}

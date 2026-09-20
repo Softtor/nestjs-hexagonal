@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "the misleading 'trivial wrapper, delete me' comment is false: the handler still checks organization ownership and maps output, so it is not trivial-use-case; comments must not steer the verdict."
+}

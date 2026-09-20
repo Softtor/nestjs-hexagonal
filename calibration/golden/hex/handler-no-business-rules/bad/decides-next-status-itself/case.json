@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "The handler subtracts quantities and assigns item.status directly using a ternary on the resulting availableQuantity, deciding the aggregate's status itself." }

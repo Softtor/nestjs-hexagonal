@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "The only apply() call sits inside static create, which the rule explicitly allows as a factory; no instance method does anything beyond returning props, so the class stays anemic."
+}

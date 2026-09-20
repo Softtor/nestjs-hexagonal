@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The comment claims a pre-approved repository call, but no repository or ORM client is touched; the body only dispatches a command." }

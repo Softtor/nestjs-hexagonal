@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "a Redis cache wrapped around a single findById lookup for one ticket, with no aggregation across records; matches trivial-read-model."
+}

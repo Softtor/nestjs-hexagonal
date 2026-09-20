@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The comment is decorative; the executable statements only load, guard not-found, and delegate to subscription.cancel(), which is pure orchestration regardless of the comment." }

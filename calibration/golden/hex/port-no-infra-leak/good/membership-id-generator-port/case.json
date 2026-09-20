@@ -1,0 +1,4 @@
+{
+  "expected": "ok",
+  "note": "An id generator port returning `string`/`string[]` says nothing about UUID libraries, database sequences or any vendor mechanism."
+}

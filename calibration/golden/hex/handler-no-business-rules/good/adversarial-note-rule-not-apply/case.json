@@ -1,0 +1,1 @@
+{ "expected": "ok", "note": "The comment is irrelevant to the verdict; the adjustment amount is decided by item.adjustQuantity() and the handler only retries once after a version conflict, which is orchestration." }

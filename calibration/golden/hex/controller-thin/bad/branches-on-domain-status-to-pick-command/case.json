@@ -1,0 +1,1 @@
+{ "expected": "violation", "note": "if (subscription.status === 'TRIAL') branches on domain data read from the record to choose between two different commands instead of letting the handler decide." }

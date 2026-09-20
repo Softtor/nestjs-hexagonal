@@ -1,0 +1,4 @@
+{
+  "expected": "violation",
+  "note": "Both methods take `KafkaMessage` from `kafkajs`, a broker message type, instead of a decoded domain event."
+}
