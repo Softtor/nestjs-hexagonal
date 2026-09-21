@@ -2,6 +2,12 @@
 
 All notable changes to this plugin. Versions follow `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, which CI keeps identical; a GitHub Release carries the same tag.
 
+## Unreleased
+
+### Added
+
+- `overrides[].check.unlessInEnclosingDeclaration` (issue #15): a project rulebook replaces the enclosing-declaration regex of an inherited regex rule. Written for `softtor/tenant-scoped-query` in projects where Postgres RLS enforces tenant isolation and repositories query by an aggregate id (`conversationId`, `subscriptionId`, `findUnique` by `id` on an RLS-protected model); the base rule is unchanged, the override applies only to regex checks, and methods with no declared scope keep failing. Recipe in `rulebooks/project.example.rulebook.yaml` and in the `onboard-project` skill.
+
 ## 1.3.0 — 2026-09-20
 
 Rulebook-driven agents and semantic rules. Sum of the four pull requests P1–P4 of the Jev plan.

@@ -253,6 +253,16 @@ export const RuleSchema = RuleBaseSchema.superRefine((rule, ctx) => {
   }
 });
 
+const CheckOverrideSchema = z
+  .object({
+    unlessInEnclosingDeclaration: z.string().min(1),
+  })
+  .superRefine((check, ctx) => {
+    if (!isValidRegex(check.unlessInEnclosingDeclaration, '')) {
+      ctx.addIssue({ code: 'custom', path: ['unlessInEnclosingDeclaration'], message: 'invalid regular expression' });
+    }
+  });
+
 export const OverrideSchema = z.object({
   id: z.string().regex(RULE_ID_PATTERN),
   disabled: z.boolean().optional(),
@@ -264,6 +274,7 @@ export const OverrideSchema = z.object({
     })
     .optional(),
   thresholds: ThresholdsOverrideSchema.optional(),
+  check: CheckOverrideSchema.optional(),
 });
 
 export const ExtendsEntrySchema = z.object({
