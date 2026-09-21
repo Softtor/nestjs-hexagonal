@@ -24,7 +24,7 @@ function capture(): Captured {
 interface PrescanReport {
   files: number;
   entries: PrescanEntry[];
-  semantic?: { requests: number; skippedReason?: string };
+  semantic?: { requests: number; skippedReason?: string; errors: string[] };
 }
 
 function isPrescanReport(value: unknown): value is PrescanReport {
@@ -90,6 +90,19 @@ describe('testSiblings', () => {
   it('lists the spec paths a file may have', () => {
     expect(testSiblings('src/a/order.entity.ts')).toEqual(['src/a/__tests__/order.entity.spec.ts', 'src/a/__tests__/order.entity.test.ts', 'src/a/order.entity.spec.ts', 'src/a/order.entity.test.ts']);
   });
+
+  it('accepts .spec.tsx and .test.tsx siblings for a .tsx source', () => {
+    expect(testSiblings('src/a/order-card.tsx')).toEqual([
+      'src/a/__tests__/order-card.spec.ts',
+      'src/a/__tests__/order-card.spec.tsx',
+      'src/a/__tests__/order-card.test.ts',
+      'src/a/__tests__/order-card.test.tsx',
+      'src/a/order-card.spec.ts',
+      'src/a/order-card.spec.tsx',
+      'src/a/order-card.test.ts',
+      'src/a/order-card.test.tsx',
+    ]);
+  });
 });
 
 describe('prescan on the example bounded context', () => {
@@ -141,6 +154,13 @@ describe('prescan on the example bounded context', () => {
     expect(text).toContain('2 file(s)');
   });
 
+  it('warns on stderr when no file matched', async () => {
+    const { code, report, io } = await runJson(['--files', 'examples/**/*.nothing']);
+    expect(code).toBe(0);
+    expect(report.files).toBe(0);
+    expect(io.err.join('')).toContain('warning: no files matched examples/**/*.nothing; nothing was checked');
+  });
+
   it('requires --files or --diff', async () => {
     const { code, io } = await run([]);
     expect(code).toBe(2);
@@ -184,6 +204,19 @@ describe('prescan --semantic', () => {
     }
     expect(entry(report, 'order.entity.ts').semantic).toEqual({ kind: 'entity', confidence: 0.93, agrees: true });
     expect(entry(report, 'money.vo.ts').semantic).toEqual({ kind: 'entity', confidence: 0.93, agrees: false });
+    expect([...io.out, ...io.err].join('')).not.toContain(KEY);
+  });
+
+  it('keeps the error code, HTTP status and detail when Jev fails', async () => {
+    const rejecting: FetchLike = () => Promise.resolve(new Response('{"error":"rate limited"}', { status: 429, headers: { 'content-type': 'application/json' } }));
+    const { code, report, io } = await runJson(['--files', `${EXAMPLE}/domain/entities/order.entity.ts`, '--semantic'], { TYPESAFE_API_KEY: KEY }, rejecting);
+    expect(code).toBe(0);
+    expect(report.semantic?.requests).toBe(1);
+    const error = report.semantic?.errors[0] ?? '';
+    expect(error).toContain('order.entity.ts: rate-limited (HTTP 429): ');
+    expect(error.length).toBeGreaterThan('order.entity.ts: rate-limited (HTTP 429): '.length);
+    expect(io.err.join('')).toContain(error);
+    expect(entry(report, 'order.entity.ts').semantic).toBeUndefined();
     expect([...io.out, ...io.err].join('')).not.toContain(KEY);
   });
 });

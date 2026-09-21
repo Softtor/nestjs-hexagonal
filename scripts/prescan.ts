@@ -125,13 +125,22 @@ export function classifyKind(path: string, content: string): ArtifactKind {
   return 'other';
 }
 
-/** Spec paths that would count as tests of `path`, in the order they are probed. */
+/** Spec paths that would count as tests of `path`, in the order they are probed; a `.tsx` source also accepts `.spec.tsx`/`.test.tsx`. */
 export function testSiblings(path: string): string[] {
   const normalized = normalizePath(path);
   const dir = dirname(normalized);
   const stem = basename(normalized).replace(/\.tsx?$/, '');
-  const inTests = dir === '.' ? '__tests__' : `${dir}/__tests__`;
-  return [`${inTests}/${stem}.spec.ts`, `${inTests}/${stem}.test.ts`, `${dir === '.' ? '' : `${dir}/`}${stem}.spec.ts`, `${dir === '.' ? '' : `${dir}/`}${stem}.test.ts`];
+  const extensions = normalized.endsWith('.tsx') ? ['ts', 'tsx'] : ['ts'];
+  const prefixes = [dir === '.' ? '__tests__' : `${dir}/__tests__`, dir === '.' ? '' : dir];
+  const out: string[] = [];
+  for (const prefix of prefixes) {
+    for (const kind of ['spec', 'test']) {
+      for (const extension of extensions) {
+        out.push(`${prefix === '' ? '' : `${prefix}/`}${stem}.${kind}.${extension}`);
+      }
+    }
+  }
+  return out;
 }
 
 export function prescanFiles(files: SourceFile[], exists: (path: string) => boolean): PrescanEntry[] {
@@ -169,7 +178,8 @@ const PRESCAN_USAGE = `Usage: nestjs-hexagonal-check prescan (--files <glob...> 
   Cheap static map of the files: layer from the path, kind from the content
   (${ARTIFACT_KINDS.join('|')}), line count and whether a spec sibling exists.
   --semantic asks Jev one choice question per file (needs TYPESAFE_API_KEY;
-  skipped with a notice otherwise). Output is sorted by layer.
+  skipped with a notice otherwise) and sends the whole file content, up to
+  8,000 tokens, plus its path. Output is sorted by layer.
 `;
 
 class PrescanUsageError extends Error {}
@@ -248,7 +258,8 @@ async function semanticKinds(entries: PrescanEntry[], files: SourceFile[], io: C
     requests += 1;
     const result = await client.ask({ state: { path: entry.path, layer: entry.layer, code }, questions: { kind: kindQuestion() } });
     if (!result.ok) {
-      errors.push(`${entry.path}: ${result.error}`);
+      const status = result.status === undefined ? '' : ` (HTTP ${result.status})`;
+      errors.push(`${entry.path}: ${result.error}${status}: ${result.detail}`);
       return;
     }
     const answer = result.answers.kind;
@@ -297,6 +308,9 @@ export async function runPrescan(argv: string[], io: CliIo, options: CliOptions)
     return 2;
   }
   const files = readSources(paths.filter((path) => /\.tsx?$/.test(path)), options.cwd);
+  if (files.length === 0) {
+    io.stderr(`warning: no files matched ${args.diff !== undefined ? `--diff ${args.diff}` : args.files.join(' ')}; nothing was checked\n`);
+  }
   const entries = prescanFiles(files, (candidate) => existsSync(resolve(options.cwd, candidate)));
   const report: PrescanReport = { files: entries.length, entries };
   if (args.semantic) {

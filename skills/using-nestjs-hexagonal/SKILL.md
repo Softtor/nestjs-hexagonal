@@ -119,7 +119,8 @@ The architecture rules below also exist as a machine-readable rulebook (`ruleboo
 bunx nestjs-hexagonal-check --files 'src/<bc>/**/*.ts' --classes static --strict          # offline, exit 1 on a static FAIL
 bunx nestjs-hexagonal-check --files 'src/<bc>/**/*.ts' --classes static,semantic --format json   # semantic needs TYPESAFE_API_KEY
 bunx nestjs-hexagonal-check --diff origin/main --format text                              # only the files changed since a ref
-bunx nestjs-hexagonal-check prescan --files 'src/<bc>/**/*.ts'                            # cheap map: layer, kind, size, spec sibling
+bunx nestjs-hexagonal-check prescan --files 'src/<bc>/**/*.ts'                            # cheap map: layer, kind, size, spec sibling (offline)
+bunx nestjs-hexagonal-check prescan --files 'src/<bc>/**/*.ts' --semantic                 # opt-in: sends each whole file (<= 8,000 tokens) + path to Jev, one kind question, no rule involved
 bunx nestjs-hexagonal-check stamp hexagonal softtor-conventions                          # extends block for a project rulebook
 ```
 
