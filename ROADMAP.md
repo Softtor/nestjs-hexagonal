@@ -8,6 +8,11 @@ Pick an item, open or claim an issue, and follow [CONTRIBUTING.md](CONTRIBUTING.
 - [x] Pin agents to Claude Opus 5 / Claude Sonnet 5 (`claude-opus-5`, `claude-sonnet-5`)
 - [x] Align `create-subdomain` review phase with Opus 5 (was incorrectly Sonnet)
 - [x] Document contribution paths and good-first-issue tracks
+- [x] Rulebook (`hexagonal`, `softtor-conventions`), `nestjs-hexagonal-check` CLI, opt-in hooks (1.2.0, 1.3.0)
+- [x] Semantic rules through Jev with a calibration harness and fitted thresholds (1.3.0)
+- [x] Rulebook-driven layer agents, checker-first reviewer, three-step `review-subdomain`, lockfile package runner (1.3.0)
+- [x] Skill/agent frontmatter, reference and link CI ([#7](https://github.com/Softtor/nestjs-hexagonal/issues/7), 1.3.0)
+- [x] `prescan` subcommand and a minimal read-only `explore-agent` on Haiku ([#2](https://github.com/Softtor/nestjs-hexagonal/issues/2), partially: the agent exists and is routed from `using-nestjs-hexagonal`; the "when to use Haiku vs Sonnet 5 vs Opus 5" guide and a richer inventory remain open)
 
 ## Good first issues
 
@@ -18,7 +23,6 @@ Pick an item, open or claim an issue, and follow [CONTRIBUTING.md](CONTRIBUTING.
 | Portuguese README section or `docs/pt-BR/` | Broader contributor base | Small | [#8](https://github.com/Softtor/nestjs-hexagonal/issues/8) |
 | Argument-hint / trigger phrase audit | Better manual skill discovery | Small | — |
 | Shared `.ts.example` for outbox / ACL stubs | Copy-paste starters without new skills | Small | — |
-| Skill/agent frontmatter CI | Catch broken pins and links on PRs | Small | [#7](https://github.com/Softtor/nestjs-hexagonal/issues/7) |
 
 ## Persistence & adapters
 
@@ -51,10 +55,10 @@ Pick an item, open or claim an issue, and follow [CONTRIBUTING.md](CONTRIBUTING.
 
 | Track | Description |
 |---|---|
-| Haiku explore agent | Cheap read-only BC scanner before Opus/Sonnet work | [#2](https://github.com/Softtor/nestjs-hexagonal/issues/2) |
+| Haiku explore agent | Cheap read-only BC scanner before Opus/Sonnet work; `prescan` and a minimal `explore-agent` shipped in 1.3.0, the model-choice guide is still open | [#2](https://github.com/Softtor/nestjs-hexagonal/issues/2) |
 | Optional Fable orchestrator | Long `create-subdomain` runs for large BCs | — |
 | Cursor / Copilot agent port | Same skills packaged for other coding agents | — |
-| Skill validation CI | Lint frontmatter, links, and required sections on PRs | [#7](https://github.com/Softtor/nestjs-hexagonal/issues/7) |
+| Semantic `deny` in the hooks (gate v1.1) | Only for rules with a fitted `deny` (>= 30/30 golden cases, precision >= 0.95) and false positives measured in a pilot | — |
 | Migration skill | Layered NestJS module → hexagonal BC checklist | — |
 
 ## Architecture depth (keep YAGNI)

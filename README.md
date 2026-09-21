@@ -30,6 +30,8 @@ This plugin provides layer-specific skills, specialized agents, and workflow orc
 /plugin install nestjs-hexagonal
 ```
 
+The plugin prompts for two optional values when enabled: `TYPESAFE_API_KEY` (semantic rules; leave empty to stay offline) and `package_runner` (`bun run`, `pnpm`, `npm run` or `yarn`; leave empty to detect it from each project's lockfile). To pin the CLI in a project, `bun add -d github:Softtor/nestjs-hexagonal#v1.3.0` (see [Onboarding another project](#onboarding-another-project)).
+
 ### Local development
 
 ```bash
@@ -55,27 +57,31 @@ Claude Code installs the Node dependencies of a plugin it copies into its cache 
 
 | Skill | What it does |
 |---|---|
-| `nestjs-hexagonal:create-subdomain` | Orchestrates full BC creation by dispatching agents per layer |
-| `nestjs-hexagonal:review-subdomain` | Architecture compliance + over-engineering + code smell review |
+| `nestjs-hexagonal:create-subdomain` | Orchestrates full BC creation by dispatching agents per layer; verification and review run the checker |
+| `nestjs-hexagonal:review-subdomain` | Three steps: static rulebook (CLI), semantic rulebook (Jev, one batch per file), residual review by the Opus agent; every finding cites its rule id or `residual` |
+| `nestjs-hexagonal:onboard-project` | Checklist to onboard a project: stamped `.claude/rulebook.yaml`, key, pinned CLI, baseline, hooks |
+| `nestjs-hexagonal:jev-eval` | Calibrate or evaluate a semantic rule: golden cases, `run.ts`/`fit.ts`, report, advise/ask/deny decision, weekly pilot report |
+| `nestjs-hexagonal:using-nestjs-hexagonal` | Routing meta-skill; also documents the package runner, the rulebook and CLI, the hooks and how other harnesses run the CLI |
 
 ## Agents
 
-Each agent loads its corresponding skill and specializes in one concern.
+The six pipeline agents are rulebook-driven: the rules arrive as a slice injected by the `SubagentStart` hook, the layer skill supplies the code patterns, the `SubagentStop` hook blocks a stop that leaves a static FAIL behind, and each agent runs `nestjs-hexagonal-check` on the files it created before reporting. `architecture-reviewer` runs the checker first and judges only what the rulebook cannot decide. `explore-agent` is the cheap read-only scanner (issue [#2](https://github.com/Softtor/nestjs-hexagonal/issues/2)) built on `prescan`.
 
 | Agent | Model | Purpose |
 |---|---|---|
+| `explore-agent` | Claude Haiku (`haiku` alias) | Read-only map of an existing module: `prescan` plus the minimum reads; runs before Opus/Sonnet touch anything |
 | `domain-agent` | **Claude Opus 5** (`claude-opus-5`) | Domain modeling — entities, VOs, events, repo interfaces |
 | `application-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Use cases, CQRS handlers, DTOs, ports |
 | `infrastructure-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Prisma repos, module wiring, adapters |
 | `presentation-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Controllers, request DTOs, Swagger |
 | `broadcasting-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | WS gateway (backend) + event consumption (Next.js/React frontend) |
 | `listener-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Creates event listeners (same-BC projections, cross-BC reactions, bridge) |
-| `architecture-reviewer` | **Claude Opus 5** (`claude-opus-5`) | Over-engineering detection + code smell identification |
+| `architecture-reviewer` | **Claude Opus 5** (`claude-opus-5`) | Consumes the checker JSON; judges `uncertain`/`uncalibrated`/undecided semantic outcomes, WARN semantic findings and cross-file concerns (multi-hop tenant scoping, empty directories, small event tables) |
 | `event-debug-agent` | **Claude Opus 5** (`claude-opus-5`) | Debug full event chain: entity -> dispatch -> WS -> frontend |
 
 **Why Opus 5 for domain, review, and debug?** Domain modeling requires critical decisions. Review requires deep judgment to distinguish necessary from unnecessary complexity. Event debugging requires tracing across 6 layers systematically.
 
-**Model pins:** Agents use full IDs (`claude-opus-5`, `claude-sonnet-5`) so resolution does not fall back to legacy 4.x aliases on some providers. Requires Claude Code **v2.1.219+** (Opus 5) and **v2.1.197+** (Sonnet 5) — run `claude update` if needed.
+**Model pins:** Agents use full IDs (`claude-opus-5`, `claude-sonnet-5`) so resolution does not fall back to legacy 4.x aliases on some providers. Requires Claude Code **v2.1.219+** (Opus 5) and **v2.1.197+** (Sonnet 5) — run `claude update` if needed. `explore-agent` uses the `haiku` alias on purpose: it is read-only, any Haiku generation does the job, and the alias follows whatever Haiku the account serves. The `frontmatter` CI job accepts exactly `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5` and `haiku`.
 
 ## Architecture Overview
 
@@ -132,9 +138,11 @@ The architecture rules above also exist as a machine-readable **rulebook** (`rul
 bun scripts/check.ts --rulebook hexagonal --files 'src/**/*.ts' --classes static --format text
 
 # from a project that installed the plugin as a dev dependency
-bun add -d github:Softtor/nestjs-hexagonal#v1.2.0
+bun add -d github:Softtor/nestjs-hexagonal#v1.3.0
 bunx nestjs-hexagonal-check --files 'apps/api/src/**/*.ts' --strict
 bunx nestjs-hexagonal-check --diff origin/main --format json
+bunx nestjs-hexagonal-check prescan --files 'apps/api/src/orders/**/*.ts'   # map: layer, kind, size, spec sibling
+bunx nestjs-hexagonal-check stamp hexagonal softtor-conventions          # extends block for a project rulebook
 ```
 
 | Flag | Meaning |
@@ -149,6 +157,14 @@ bunx nestjs-hexagonal-check --diff origin/main --format json
 | `--explain` | list the rules applied to each file; with `semantic`, also the questions and the state slice sent |
 
 Each finding carries the rule id, severity (`FAIL`/`WARN`), path, line, evidence and the rule's `fix` text.
+
+Subcommands:
+
+| Subcommand | Meaning |
+|---|---|
+| `stamp [<id>...]` | prints the `extends` block (id, version, sha256) of the named plugin rulebooks, default `hexagonal`, ready to paste into `.claude/rulebook.yaml` |
+| `prescan --files\|--diff [--semantic] [--format json\|text]` | cheap static map of the files: layer from the path (`domain`, `application`, `infrastructure`, `presentation`, `other`), kind from the content (`entity`, `vo`, `event`, `repo-interface`, `use-case`, `handler`, `controller`, `dto`, `module`, `listener`, `adapter`, `test`, `other`), line count and whether a spec sibling exists; sorted by layer. `--semantic` asks Jev one `choice` question per file ("what kind of artifact is this", the kinds plus `other`) and records the answer next to the static kind with an `agrees` flag; it runs only with a key and is skipped with a notice otherwise. This is the input of the `explore-agent` and of any cheap explore step, not a rule check |
+| `export-logs --since <date> [--out <file>] [--data-dir <dir>]` | aggregates the hook log (see [Hooks](#hooks)) |
 
 ### Project rulebook
 
@@ -206,11 +222,18 @@ State lives under `$CLAUDE_PLUGIN_DATA` (`~/.claude/plugins/data/<id>/`; when th
 
 ### Onboarding another project
 
-1. Create `.claude/rulebook.yaml` extending `hexagonal` (and `softtor-conventions` only if multi-tenant scoping, no emoji and English identifiers are conventions of that project), stamping each base with `sha256sum rulebooks/<id>.rulebook.yaml` of the installed copy.
+The skill `nestjs-hexagonal:onboard-project` is the executable version of this list.
+
+1. Create `.claude/rulebook.yaml` extending `hexagonal` (and `softtor-conventions` only if multi-tenant scoping, no emoji and English identifiers are conventions of that project). `nestjs-hexagonal-check stamp hexagonal softtor-conventions` prints the `extends` block with the sha256 of the installed copies.
 2. Set the key, if semantic rules are wanted: answer the `TYPESAFE_API_KEY` prompt when enabling the plugin (stored in the keychain, exported to the hooks as `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY`) or export `TYPESAFE_API_KEY` in the shell. The option is read first.
-3. Pin the CLI in the project so the hooks and the CI run the same version: `bun add -d github:Softtor/nestjs-hexagonal#vX.Y.Z`. The hooks prefer `node_modules/.bin/nestjs-hexagonal-check` when it exists.
+3. Pin the CLI in the project so the hooks and the CI run the same version: `bun add -d github:Softtor/nestjs-hexagonal#v1.3.0`. The hooks prefer `node_modules/.bin/nestjs-hexagonal-check` when it exists.
 4. Run `bunx nestjs-hexagonal-check --files 'src/**/*.ts' --strict` once to see the baseline, and add it to lint-staged or CI.
 5. Optional: `NESTJS_HEXAGONAL_RULEBOOK` in `.claude/settings.json` `env` when the rulebook lives elsewhere.
+6. Other harnesses (Codex, Cursor, OpenCode) get no hooks or agents; they run the same CLI from the project (`--diff <base> --strict` in a pre-commit step, `--format json` for a reviewer, `prescan` before editing).
+
+### Package runner
+
+Skills and agents never hardcode a package manager. They write `<runner>` (`bun run`, `pnpm`, `npm run`, `yarn`) and `<add>` (`bun add`, `pnpm add`, `npm install`, `yarn add`), resolved from the lockfile at the project root (`bun.lock`/`bun.lockb`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`); the table lives once in `skills/using-nestjs-hexagonal/SKILL.md`. The optional `package_runner` user option overrides the detection for one user: Claude Code substitutes non-sensitive `userConfig` values into skill and agent content as `${user_config.package_runner}`, so the skill shows the configured value inline. The value is user-level (`pluginConfigs` in the user settings), never per project, and `CLAUDE_PLUGIN_OPTION_PACKAGE_RUNNER` reaches hook processes only, not the agent's Bash, which is why lockfile detection is the primary mechanism.
 
 ### Semantic checks (Jev)
 
@@ -277,7 +300,7 @@ The installer adds:
 
 ## Contributing
 
-Community contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the [ROADMAP](ROADMAP.md) for open feature tracks and good first issues.
+Community contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), the [ROADMAP](ROADMAP.md) for open feature tracks and good first issues, and the [CHANGELOG](CHANGELOG.md). CI validates every agent and skill frontmatter, every `nestjs-hexagonal:<id>` reference and every relative link (`bun scripts/validate-frontmatter.ts`).
 
 1. Fork the repository
 2. Create a feature branch

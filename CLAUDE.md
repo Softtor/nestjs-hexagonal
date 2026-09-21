@@ -69,7 +69,7 @@ Fitted thresholds take precedence over rulebook thresholds over defaults; a rule
 | `softtor/no-emoji` | static | FAIL | Softtor style (`softtor-conventions`) |
 | `softtor/identifiers-english` | static | WARN | Softtor style (`softtor-conventions`) |
 
-Adding a static rule requires `calibration/golden/<rule-id>/{good,bad}/` fixtures (at least 2 each); a semantic rule requires labelled cases (`<case-id>/case.json` + one file, at least 8 good, 8 bad and 5 adversarial good); `bun test ./scripts ./calibration/__tests__` enforces both. Calibration (`calibration/run.ts` with the real key, then `calibration/fit.ts`) writes `calibration/fitted/<pin>.json` and `calibration/report.md`; it runs in CI only on push to `main` and weekly, never on pull requests. Keep `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` on the same version.
+Subcommands of `check.ts`: `stamp [<id>...]` prints the `extends` block with sha256 stamps; `prescan --files|--diff [--semantic]` (`scripts/prescan.ts`) maps layer, kind, size and spec sibling per file and, with a key, asks Jev one `choice` per file; `export-logs` aggregates the hook log. `scripts/validate-frontmatter.ts` (CI job `frontmatter`) validates agents, skills, `nestjs-hexagonal:<id>` references and relative links. Skills never hardcode a package manager: `<runner>`/`<add>` come from the lockfile ("Package runner" in `using-nestjs-hexagonal`), `scripts/__tests__/docs.spec.ts` greps for `pnpm` outside that section. Adding a static rule requires `calibration/golden/<rule-id>/{good,bad}/` fixtures (at least 2 each); a semantic rule requires labelled cases (`<case-id>/case.json` + one file, at least 8 good, 8 bad and 5 adversarial good); `bun test ./scripts ./calibration/__tests__` enforces both. Calibration (`calibration/run.ts` with the real key, then `calibration/fit.ts`) writes `calibration/fitted/<pin>.json` and `calibration/report.md`; it runs in CI only on push to `main` and weekly, never on pull requests. Keep `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` on the same version.
 
 ## Skills
 
@@ -81,13 +81,19 @@ Adding a static rule requires `calibration/golden/<rule-id>/{good,bad}/` fixture
 | `nestjs-hexagonal:presentation` | Controller, request DTO, Swagger, error filter |
 | `nestjs-hexagonal:websocket-broadcasting` | Domain event -> WebSocket broadcast to frontend |
 | `nestjs-hexagonal:event-listeners` | Same-BC, cross-BC, and bridge listeners (WS, broker, email) |
-| `nestjs-hexagonal:create-subdomain` | Full BC orchestrator (dispatches agents per layer) |
-| `nestjs-hexagonal:review-subdomain` | Architecture compliance review |
+| `nestjs-hexagonal:create-subdomain` | Full BC orchestrator (dispatches agents per layer; Phase 6 runs the checker, Phase 7 invokes review-subdomain) |
+| `nestjs-hexagonal:review-subdomain` | Static rulebook (CLI) -> semantic rulebook (Jev) -> residual review by architecture-reviewer; findings cite rule ids |
+| `nestjs-hexagonal:onboard-project` | Stamped `.claude/rulebook.yaml`, key, pinned CLI, baseline, hooks |
+| `nestjs-hexagonal:jev-eval` | Golden cases, calibration run and fit, advise/ask/deny decision, weekly pilot report |
+| `nestjs-hexagonal:using-nestjs-hexagonal` | Routing; documents the package runner (lockfile detection, `${user_config.package_runner}` override), rulebook and CLI, hooks, other harnesses |
 
-## Agents (each loads its corresponding skill)
+## Agents
+
+The six pipeline agents get their rules from the `SubagentStart` slice, load the layer skill for patterns, have a "When the SubagentStop hook blocks" section (fix the listed files, do not argue, do not touch files you did not create) and run `nestjs-hexagonal-check --files <created> --classes static --strict` before reporting (or say the CLI is not installed). `architecture-reviewer` runs `--format json --classes static,semantic --explain` first and judges only `uncertain`/`uncalibrated`/undecided outcomes, WARN semantic findings and cross-file concerns. `explore-agent` is read-only on `haiku` and runs `prescan`.
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
+| `explore-agent` | Claude Haiku (`haiku`) | Read-only map of a module (prescan + minimal reads) |
 | `domain-agent` | **Claude Opus 5** | Domain modeling (entities, VOs, events) |
 | `application-agent` | Claude Sonnet 5 | Use cases, handlers, DTOs, ports |
 | `infrastructure-agent` | Claude Sonnet 5 | Repos, module wiring, adapters |
