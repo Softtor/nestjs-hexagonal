@@ -361,7 +361,9 @@ private applyRuntimeCors(allowedOrigins: string[]): void {
 
 ## Required packages
 
+Use the project's package runner (`<add>` resolved from the lockfile, see "Package runner" in `nestjs-hexagonal:using-nestjs-hexagonal`):
+
 ```bash
-pnpm add @nestjs/websockets @nestjs/platform-socket.io socket.io @socket.io/redis-adapter ioredis
-pnpm add -D @types/socket.io
+<add> @nestjs/websockets @nestjs/platform-socket.io socket.io @socket.io/redis-adapter ioredis
+<add> -D @types/socket.io
 ```

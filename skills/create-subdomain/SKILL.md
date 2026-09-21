@@ -20,6 +20,8 @@ Orchestrator that dispatches specialized agents per architectural layer. Each ag
 
 > **Agent Dispatch:** The dispatch blocks below are conceptual templates. In Claude Code, dispatch agents using the `Agent` tool with a `prompt` string that includes "Load skill nestjs-hexagonal:<layer> for patterns." The agent's model and tools are defined in the agent `.md` file frontmatter, not in the tool call.
 
+> **Rulebook:** when the project has `.claude/rulebook.yaml`, each agent receives the rulebook slice of its layer from the `SubagentStart` hook, a Write or Edit that introduces a static FAIL is denied, and the agent's stop is blocked until the touched files pass the static rules (at most twice). The `PostToolUse` hook on the `Agent` tool hands you the unresolved FAILs of a released agent: address them before the next phase. Package scripts below use `<runner>`, resolved from the lockfile ("Package runner" in `nestjs-hexagonal:using-nestjs-hexagonal`).
+
 Compatible with GSD: each phase maps to a GSD execution step.
 
 ---
@@ -152,31 +154,25 @@ Creates: controller, request DTOs, Swagger, module registration.
 
 ## Phase 6 — Verification (inline)
 
-Run directly, no agent needed:
+Run directly, no agent needed, with the package runner resolved from the lockfile:
 
 ```bash
-pnpm check-types
-pnpm lint
-pnpm test --filter <module-name>
-pnpm build
+<runner> check-types
+<runner> lint
+<runner> test            # scoped to the module the way the project's scripts allow
+<runner> build
+bunx nestjs-hexagonal-check --files '<path>/**/*.ts' --classes static --strict   # or node_modules/.bin/nestjs-hexagonal-check
 ```
 
-All must exit 0. Fix root causes, no suppression.
+All must exit 0. Fix root causes, no suppression. If the checker is not installed in the project, say so in the final report and continue.
 
 ---
 
-## Phase 7 — Architecture Review via `architecture-reviewer` (Claude Opus 5)
+## Phase 7 — Architecture Review via `review-subdomain`
 
-```
-Agent tool:
-  subagent_type: "nestjs-hexagonal:architecture-reviewer"
-  model: claude-opus-5
-  prompt: |
-    Review bounded context at "<path>".
-    Check all 6 dimensions. Produce Pass/Warning/Fail report.
-```
+Invoke `nestjs-hexagonal:review-subdomain` with `<path>`. It runs the three review steps: static rulebook (`nestjs-hexagonal-check --classes static --format json`), semantic rulebook (`--classes semantic`, one batch per file, skipped without `TYPESAFE_API_KEY`) and the residual review by the `architecture-reviewer` agent (Claude Opus 5), which receives the checker JSON and judges only what the rulebook could not decide. The report keeps the PASS / WARNING / FAIL format, each finding citing its rule id or `residual`.
 
-Address every FAIL. Report to user: structure, pattern, decisions, deferred warnings.
+Address every FAIL. Report to user: structure, pattern, decisions, deferred warnings, and the rulebook run summary (rulebook id and version, counts, whether semantic ran).
 
 ---
 
@@ -191,8 +187,8 @@ This workflow maps directly to GSD phases:
 | Execute task 2 | Phase 3 (application) | application-agent (Sonnet 5) |
 | Execute task 3 | Phase 4 (infrastructure) | infrastructure-agent (Sonnet 5) |
 | Execute task 4 | Phase 5 (presentation) | presentation-agent (Sonnet 5) |
-| Verify | Phase 6 (verification) | inline |
-| Review | Phase 7 (review) | architecture-reviewer (Opus 5) |
+| Verify | Phase 6 (verification) | inline (package runner + nestjs-hexagonal-check) |
+| Review | Phase 7 (review) | review-subdomain: CLI static, CLI semantic, architecture-reviewer (Opus 5) residual |
 
 When used within GSD, each phase can be a separate GSD task tracked in the plan.
 

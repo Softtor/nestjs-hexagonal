@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { normalizePath } from './scope.ts';
+import { matchGlob, normalizePath } from './scope.ts';
 import type { SourceFile } from './static-engine.ts';
 
 const PROJECT_TREE_IGNORED = new Set(['node_modules', '.git', 'dist']);
 const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
+const IGNORED_DIRECTORIES = new Set(['node_modules', '.git']);
 
 export function gitTopLevel(cwd: string): string | null {
   try {
@@ -95,4 +96,53 @@ export function changedFilesSince(ref: string, base: string): string[] | null {
   } catch {
     return null;
   }
+}
+
+function walk(dir: string, base: string, out: string[]): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (IGNORED_DIRECTORIES.has(entry.name)) {
+      continue;
+    }
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full, base, out);
+    } else if (entry.isFile()) {
+      out.push(normalizePath(relative(base, full)));
+    }
+  }
+}
+
+/** Expands globs, directories and literal paths into sorted paths relative to `cwd`. */
+export function expandGlobs(globs: string[], cwd: string): string[] {
+  const literal = globs.filter((pattern) => !/[*?{]/.test(pattern));
+  const patterns = globs.filter((pattern) => /[*?{]/.test(pattern));
+  const selected = new Set<string>();
+
+  for (const path of literal) {
+    const full = resolve(cwd, path);
+    if (!existsSync(full)) {
+      continue;
+    }
+    if (statSync(full).isDirectory()) {
+      const inside: string[] = [];
+      walk(full, cwd, inside);
+      for (const entry of inside) {
+        selected.add(entry);
+      }
+    } else if (statSync(full).isFile()) {
+      selected.add(normalizePath(relative(cwd, full)));
+    }
+  }
+
+  if (patterns.length > 0) {
+    const all: string[] = [];
+    walk(cwd, cwd, all);
+    for (const path of all) {
+      if (patterns.some((pattern) => matchGlob(pattern, path))) {
+        selected.add(path);
+      }
+    }
+  }
+
+  return [...selected].sort();
 }

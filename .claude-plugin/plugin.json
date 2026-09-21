@@ -1,7 +1,7 @@
 {
   "name": "nestjs-hexagonal",
-  "description": "Skills for building NestJS bounded contexts with Hexagonal Architecture, DDD, and CQRS patterns. Covers domain modeling, application layer, infrastructure wiring, presentation, full TDD workflow, and architecture review.",
-  "version": "1.3.0-dev.0",
+  "description": "Skills, agents, rulebook checker and hooks for NestJS bounded contexts with Hexagonal Architecture, DDD, and CQRS. Layer agents are rulebook-driven; a CLI runs the static rules offline and the semantic rules through Jev when a key is set.",
+  "version": "1.3.0",
   "author": {
     "name": "Softtor",
     "url": "https://github.com/softtor"
@@ -15,6 +15,12 @@
       "title": "TypeSafe API key (optional)",
       "description": "Enables the semantic (Jev) rules in the hooks and the CLI. Leave empty to keep the plugin static-only and offline; the key is read by the hooks as CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY and never written to any output or log.",
       "sensitive": true,
+      "required": false
+    },
+    "package_runner": {
+      "type": "string",
+      "title": "Package runner (optional)",
+      "description": "Command the skills use to run package scripts, e.g. \"bun run\", \"pnpm\", \"npm run\" or \"yarn\". Leave empty to detect it from the lockfile of each project (bun.lock, pnpm-lock.yaml, package-lock.json, yarn.lock). Substituted into skill text as ${user_config.package_runner}; user-level, never per project.",
       "required": false
     }
   },

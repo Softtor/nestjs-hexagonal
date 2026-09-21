@@ -340,4 +340,4 @@ See full template: `references/event-infra-patterns.md`
 - [ ] Adapter class: `@Injectable()`, implements external port interface
 - [ ] Adapter registered: `{ provide: TOKEN, useExisting: Adapter }` + exported
 - [ ] Event handlers: `try/catch` with logger, never re-throw
-- [ ] Run `pnpm lint && pnpm check-types` before committing
+- [ ] Run `<runner> lint && <runner> check-types` before committing (`<runner>` from the lockfile, see "Package runner" in `nestjs-hexagonal:using-nestjs-hexagonal`)
