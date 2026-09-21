@@ -182,6 +182,34 @@ describe('composeRulebook', () => {
       /minConfidence/,
     );
   });
+
+  it('applies a check override to a regex rule and rejects it on any other check kind', () => {
+    const mixed = book('mixed', [
+      rule('hex/r', { check: { kind: 'regex', pattern: 'find', unlessInEnclosingDeclaration: 'organizationId' } }),
+      rule('hex/i', { check: { kind: 'forbidden-import', modules: ['@nestjs/*'] } }),
+    ]);
+    const mixedText = 'mixed';
+    const ok = book('proj', [], {
+      extends: [{ id: 'mixed', version: '1.0.0', sha256: sha256(mixedText) }],
+      overrides: [{ id: 'hex/r', check: { unlessInEnclosingDeclaration: 'organizationId|conversationId' } }],
+    });
+    const composed = composeRulebook(ok, resolver({ mixed: { rulebook: mixed, text: mixedText } }));
+    expect(composed.rules.find((r) => r.id === 'hex/r')?.check).toEqual({
+      kind: 'regex',
+      pattern: 'find',
+      flags: '',
+      mustMatch: false,
+      unlessInEnclosingDeclaration: 'organizationId|conversationId',
+    });
+
+    const bad = book('proj', [], {
+      extends: [{ id: 'mixed', version: '1.0.0', sha256: sha256(mixedText) }],
+      overrides: [{ id: 'hex/i', check: { unlessInEnclosingDeclaration: 'x' } }],
+    });
+    expect(() => composeRulebook(bad, resolver({ mixed: { rulebook: mixed, text: mixedText } }))).toThrow(
+      /hex\/i.*regex checks/,
+    );
+  });
 });
 
 describe('loadComposedRulebook', () => {

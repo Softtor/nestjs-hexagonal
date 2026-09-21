@@ -51,7 +51,7 @@ model:
   provider: typesafe
   pin: jev-1.13.0
 rules: []                   # project rules under <project-id>/<slug>, static first
-overrides: []               # by id: disabled, severity, scope, thresholds
+overrides: []               # by id: disabled, severity, scope, thresholds, check.unlessInEnclosingDeclaration (regex rules)
 ```
 
 A stale stamp never blocks: the CLI reports `rulebook-mismatch` and marks the run `uncalibrated`. Refresh the stamps when the plugin is updated (`stamp` again).
@@ -80,7 +80,7 @@ bunx nestjs-hexagonal-check --files 'src/**/*.ts' --classes static --strict --fo
 bunx nestjs-hexagonal-check prescan --files 'src/<one-module>/**/*.ts'            # cheap map of a module
 ```
 
-Exit 1 lists the static FAILs the codebase already has. Decide with the user: fix them, scope them out (`overrides` with `scope.exclude` for legacy paths) or lower them to WARN for now. Do not disable a FAIL rule globally to get green.
+Exit 1 lists the static FAILs the codebase already has. Decide with the user: fix them, scope them out (`overrides` with `scope.exclude` for legacy paths), declare the tenant scope the database already enforces (`softtor/tenant-scoped-query` with `check.unlessInEnclosingDeclaration` listing the aggregate ids and RLS-protected `findUnique` shapes, recipe in `rulebooks/project.example.rulebook.yaml`) or lower them to WARN for now. Do not disable a FAIL rule globally to get green.
 
 Add the check to the project's gate, for example lint-staged: `nestjs-hexagonal-check --files <staged files> --classes static --strict`, or CI: `--diff origin/main --strict`.
 
