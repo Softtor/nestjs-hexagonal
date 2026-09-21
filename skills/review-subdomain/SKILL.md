@@ -1,6 +1,6 @@
 ---
 name: review-subdomain
-description: Reviews a NestJS bounded context implementation for Hexagonal Architecture + DDD + CQRS compliance. Checks 6 dimensions — domain purity, application patterns, infrastructure isolation, presentation concerns, testing coverage, and module organization. Produces a structured Pass/Warning/Fail report.
+description: Reviews a NestJS bounded context for Hexagonal Architecture + DDD + CQRS compliance in three steps — static rulebook via nestjs-hexagonal-check, semantic rulebook via Jev (one batch per file, skipped without a key) and a residual review by the architecture-reviewer agent for what the rulebook cannot decide. Produces a structured Pass/Warning/Fail report where every finding cites its rule id or "residual".
 argument-hint: Path to the bounded context directory (e.g., "src/enterprise/billing/invoices")
 allowed-tools:
   - Read
@@ -12,9 +12,9 @@ allowed-tools:
 
 # review-subdomain
 
-Review a bounded context for architectural compliance. Accept the BC path as the argument (e.g., `src/enterprise/billing/invoices`). Run each dimension in order. Produce a structured report at the end.
+Review a bounded context for architectural compliance. Accept the BC path as the argument (e.g., `src/enterprise/billing/invoices`). The rulebook decides everything it can decide; the agent reviews only the rest. Produce the structured report at the end.
 
-The rubric with scoring criteria is in `references/review-rubric.md`.
+The rubric in `references/review-rubric.md` lists the 35 checks; each one is marked with the rule id that covers it or with "residual (agent)".
 
 ---
 
@@ -22,17 +22,55 @@ The rubric with scoring criteria is in `references/review-rubric.md`.
 
 Resolve the target directory from the argument. If no argument is given, ask the user for the path.
 
-Verify the directory exists:
-
 ```bash
 ls <bc-path>
 ```
 
-If the directory does not exist, stop and report an error.
+If the directory does not exist, stop and report an error. Set `BC_PATH` to the resolved path relative to the project root (the CLI reports paths relative to the current directory). Locate the checker:
 
-Set `BC_PATH` to the resolved absolute path. All grep and glob searches below use `BC_PATH` as the root.
+```bash
+bunx nestjs-hexagonal-check --help >/dev/null 2>&1 && echo bunx || ls node_modules/.bin/nestjs-hexagonal-check
+```
+
+If neither works, the plugin is not installed in this project: skip steps 1 and 2, run the whole rubric by hand in step 3, and say in the report that the rulebook did not run.
 
 ---
+
+## Step 1 — Static rulebook (offline)
+
+```bash
+bunx nestjs-hexagonal-check --rulebook hexagonal --files '<BC_PATH>/**/*.ts' --classes static --format json > /tmp/review-static.json
+```
+
+- Drop `--rulebook hexagonal` when the project has `.claude/rulebook.yaml` (the project rulebook is picked up by default; `--project-rulebook <path>` points at another file). The project rulebook adds its own rules and overrides and decides whether `softtor-conventions` (tenant scoping, no emoji, English identifiers) applies.
+- Every finding carries `ruleId`, `severity` (`FAIL`/`WARN`), `path`, `line`, `evidence` and `fix`. Static FAILs are blocking and are reported verbatim; do not re-check them by hand.
+- `warnings` lists composition problems (a stale sha256 stamp marks the run `uncalibrated`; an `external` check without executor is skipped).
+
+## Step 2 — Semantic rulebook (Jev, one batch per file)
+
+```bash
+bunx nestjs-hexagonal-check --rulebook hexagonal --files '<BC_PATH>/**/*.ts' --classes semantic --format json > /tmp/review-semantic.json
+```
+
+- The engine sends one request per file and state slice with every semantic rule that applies to that file (`hex/handler-no-business-rules`, `hex/port-no-infra-leak`, `hex/entity-not-anemic`, `hex/controller-thin`, `hex/no-overengineering`). Add `--explain` to see the questions and the slice sent.
+- Without `TYPESAFE_API_KEY` (or the plugin's `TYPESAFE_API_KEY` option) the CLI prints `TYPESAFE_API_KEY is not set; skipped N semantic rule(s)` and `skipped.semantic` lists the rule ids. Say so in the report; those checks then fall to step 3.
+- Each semantic finding carries a `decision`: `deny` (only with fitted thresholds; `--strict` would exit 1), `ask`, `advise`, `uncertain` (probability inside the abstention band or low confidence) or `uncalibrated` (model differs from the pin or a stamp mismatch). `semantic.undecided` lists batches Jev could not answer (timeout, HTTP error). Nothing semantic blocks in this version.
+
+## Step 3 — Residual review (agent)
+
+Dispatch `nestjs-hexagonal:architecture-reviewer` (Claude Opus 5) with `BC_PATH` and the two JSON files. Its judgment covers only:
+
+1. semantic outcomes `uncertain`, `uncalibrated` and the `undecided` batches, plus the semantic rules skipped for lack of a key;
+2. semantic findings with severity WARN (`advise`/`ask`): confirm or dismiss with evidence;
+3. the rubric checks marked "residual (agent)" in `references/review-rubric.md` (D4, D5 factories, A1-A3, A5, I2-I6, P1-P4, T1-T4, M1, M2, M4, tenant scoping when `softtor-conventions` is not extended) and cross-file concerns the rulebook cannot decide from one file: multi-hop tenant scoping, empty directories, event mapping tables with fewer than 5 entries.
+
+When the checker is not installed, the agent runs the full rubric instead and tags every finding `residual`.
+
+---
+
+## Rubric reference
+
+The dimensions below are the checks the report is organised by. For each check the rubric names the rule id that covers it (then the finding comes from step 1 or 2, quoted with its id) or "residual (agent)" (then step 3 performs the check). The commands are kept as the manual fallback for a project without the CLI.
 
 ## Dimension 1 — Domain Purity
 
@@ -304,10 +342,14 @@ WARNING if files deviate significantly from these naming conventions.
 
 ## Report Format
 
-Produce a structured markdown report after all checks:
+Produce a structured markdown report from the two JSON files plus the residual review. A dimension is FAIL when any static FAIL or semantic `deny` maps to it, WARNING when only WARN findings, `advise`/`ask` decisions or residual warnings map to it, PASS otherwise. Every finding cites its source: the rule id for steps 1 and 2, `residual` for step 3.
 
 ```
 # Architecture Review: <BC_PATH>
+
+## Rulebook run
+
+- Rulebook: <id> <version> (uncalibrated: yes/no); static: X FAIL, Y WARN; semantic: N deny, N ask, N advise, N uncertain, N uncalibrated, N undecided (or "skipped: no key" / "CLI not installed")
 
 ## Summary
 
@@ -328,34 +370,38 @@ Overall: PASS / NEEDS WORK
 
 ### FAIL Items (must fix before merge)
 
-- **[D1] No NestJS common imports in domain:** Found in `domain/entities/order.entity.ts` (line 3: `import { Injectable }`)
-  Fix: Remove `@Injectable` — entities have no framework decorators.
+- **[D1 · hex/domain-no-nest-decorators] Domain has no framework or infrastructure imports:** `domain/entities/order.entity.ts:3` — evidence: `import { Injectable } from '@nestjs/common'`
+  Fix: <the rule's fix text>
 
-- **[I1] Module exports only tokens:** `PrismaOrderRepository` exported from `orders.module.ts`
+- **[I1 · hex/module-exports-ports-only] Module exports only tokens:** `infrastructure/orders.module.ts:41` — evidence: `PrismaOrderRepository` in exports
   Fix: Change to `exports: [ORDER_REPOSITORY]`.
 
 ### WARNING Items (recommended improvements)
 
-- **[T1] Entity spec files:** No spec files found in `domain/entities/__tests__/`
+- **[P5 · hex/controller-thin · advise 0.71] Controller method contains logic:** `infrastructure/controllers/orders.controller.ts:52`
+  Residual judgment: confirmed — the method branches on `order.status` before dispatching.
+
+- **[T1 · residual] Entity spec files:** No spec files found in `domain/entities/__tests__/`
   Recommendation: Add entity unit tests covering `create()`, `restore()`, and each mutating method.
 
-- **[D7] Data builders:** `domain/testing/helpers/` is empty
-  Recommendation: Add `OrderDataBuilder` with faker defaults for use in all test files.
+### Undecided by the rulebook (resolved by hand)
+
+- **[A4 · hex/handler-no-business-rules · uncertain 0.48]** `application/commands/cancel-order.handler.ts` — judged OK: the branch only maps an error to a result.
 
 ### PASS Items
 
-- Domain purity: no framework imports in domain
-- Application DTOs: no class-validator found
-- Mapper uses restore(): confirmed in `order-model.mapper.ts`
-- Module exports: only token Symbols exported
+- Domain purity: no static findings for hex/domain-no-nest-decorators
+- Application DTOs: no class-validator found (residual)
+- Mapper uses restore(): confirmed in `order-model.mapper.ts` (residual)
+- Module exports: no findings for hex/module-exports-ports-only
 ```
 
 ---
 
 ## After the Report
 
-- FAIL items are blocking — the BC is not ready to merge until all FAILs are resolved.
+- FAIL items are blocking — the BC is not ready to merge until all FAILs are resolved. A static FAIL is also what the plugin hooks deny and block on, so a BC with static FAILs will not get through `create-subdomain` either.
 - WARNING items are advisory — present them to the user and ask whether to address now or log as tech debt.
 - If all items are PASS or WARNING: report the BC as architecture-compliant.
 
-Suggest specific fixes for each FAIL item, referencing the relevant layer skill (`nestjs-hexagonal:domain`, `nestjs-hexagonal:application`, etc.) for implementation guidance.
+Suggest specific fixes for each FAIL item: the rule's own `fix` text first, then the relevant layer skill (`nestjs-hexagonal:domain`, `nestjs-hexagonal:application`, etc.) for implementation guidance. A rule that keeps producing false positives on this project is a candidate for an override in `.claude/rulebook.yaml` (`disabled`, `severity`, `scope`), or for recalibration through `nestjs-hexagonal:jev-eval` when it is semantic.

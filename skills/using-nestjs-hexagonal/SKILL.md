@@ -54,6 +54,7 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 
 | Task | Route to | Type |
 |------|----------|------|
+| Map an existing module before changing it | `nestjs-hexagonal:explore-agent` | Agent (Haiku, read-only) |
 | Review bounded context | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5) |
 | Check for over-engineering | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5) |
 | Debug event not reaching frontend | `nestjs-hexagonal:event-debug-agent` | Agent (Opus 5) |
@@ -64,6 +65,8 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | Task | Route to | Type |
 |------|----------|------|
 | Configure GSD to use this plugin | `nestjs-hexagonal:gsd-installer` | Skill |
+| Onboard a project to the rulebook and hooks | `nestjs-hexagonal:onboard-project` | Skill |
+| Calibrate or evaluate a semantic (Jev) rule | `nestjs-hexagonal:jev-eval` | Skill |
 | Review all available patterns | Read `CLAUDE.md` at plugin root | Reference |
 
 ---
@@ -72,6 +75,7 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 
 | Decision Type | Agent | Model | Why |
 |---|---|---|---|
+| Read-only map of an existing module | `explore-agent` | Haiku | Cheap scan (`prescan`) before Opus/Sonnet touch anything |
 | Domain modeling (what entities, VOs, events) | `domain-agent` | **Opus 5** | Critical architectural decisions |
 | Architecture review | `architecture-reviewer` | **Opus 5** | Deep judgment for smells + over-engineering |
 | Event chain debugging | `event-debug-agent` | **Opus 5** | 6-layer systematic tracing |
@@ -81,7 +85,57 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | WebSocket + frontend | `broadcasting-agent` | Sonnet 5 | Follows WS skill patterns |
 | Event listeners | `listener-agent` | Sonnet 5 | Follows listener skill patterns |
 
-**Rule:** Use Opus 5 for DECISIONS (what to build), Sonnet 5 for EXECUTION (how to build it).
+**Rule:** Use Haiku to LOOK (read-only map), Opus 5 for DECISIONS (what to build), Sonnet 5 for EXECUTION (how to build it).
+
+---
+
+## Package runner
+
+Skills and agents never hardcode a package manager. Before running a package script (`lint`, `check-types`, `test`, `build`) or adding a dependency, resolve the runner once per session from the lockfile at the project root (`$CLAUDE_PROJECT_DIR`, or the directory holding the `package.json` you are working in):
+
+| Lockfile present | `<runner>` (scripts) | `<add>` (dependencies) |
+|---|---|---|
+| `bun.lock` or `bun.lockb` | `bun run` | `bun add` (`bun add -d` for dev) |
+| `pnpm-lock.yaml` | `pnpm` | `pnpm add` (`pnpm add -D` for dev) |
+| `package-lock.json` | `npm run` | `npm install` (`npm install -D` for dev) |
+| `yarn.lock` | `yarn` | `yarn add` (`yarn add -D` for dev) |
+| none | ask the user | ask the user |
+
+```bash
+ls bun.lock bun.lockb pnpm-lock.yaml package-lock.json yarn.lock 2>/dev/null
+```
+
+Wherever a skill or agent writes `<runner> check-types`, substitute the resolved value (`bun run check-types`, `pnpm check-types`, ...). Monorepo filters (`--filter`, `--workspace`) and test path filters differ per tool; scope the command the way the project's own scripts do instead of translating flags.
+
+**User-level override.** The plugin declares an optional `package_runner` option in its `userConfig` (set it in `/plugin` or `/config`). Claude Code substitutes non-sensitive options into skill text, so the value configured for this user is: `${user_config.package_runner}`. If that shows blank or the literal token, no override is set and the lockfile table above applies. The override is per user (`pluginConfigs` in the user settings), never per project, and it does not reach the agent's Bash environment: `CLAUDE_PLUGIN_OPTION_PACKAGE_RUNNER` exists only in hook processes.
+
+---
+
+## Rulebook and CLI
+
+The architecture rules below also exist as a machine-readable rulebook (`rulebooks/hexagonal.rulebook.yaml`, plus `softtor-conventions` for multi-tenant, no-emoji and English-identifier conventions) and a checker CLI, `nestjs-hexagonal-check`. The CLI is the reference implementation of the rules; the prose in the skills explains how to satisfy them.
+
+```bash
+bunx nestjs-hexagonal-check --files 'src/<bc>/**/*.ts' --classes static --strict          # offline, exit 1 on a static FAIL
+bunx nestjs-hexagonal-check --files 'src/<bc>/**/*.ts' --classes static,semantic --format json   # semantic needs TYPESAFE_API_KEY
+bunx nestjs-hexagonal-check --diff origin/main --format text                              # only the files changed since a ref
+bunx nestjs-hexagonal-check prescan --files 'src/<bc>/**/*.ts'                            # cheap map: layer, kind, size, spec sibling
+bunx nestjs-hexagonal-check stamp hexagonal softtor-conventions                          # extends block for a project rulebook
+```
+
+`node_modules/.bin/nestjs-hexagonal-check` works when `bunx` is unavailable. Every finding carries the rule id, severity, path, line, evidence and fix; semantic answers are decisions (`deny`, `ask`, `advise`, `uncertain`, `uncalibrated`) that never block in this version. Full flag reference: the README section "Rulebook & CLI".
+
+## Project rulebook (onboarding)
+
+A project opts in by creating `.claude/rulebook.yaml` that extends the plugin rulebooks with sha256 stamps; that file is also what turns the hooks on. The executable checklist is `nestjs-hexagonal:onboard-project` (stamp, rulebook, key, pinned CLI, first run). Calibrating or evaluating a semantic rule is `nestjs-hexagonal:jev-eval`.
+
+## Hooks
+
+With a project rulebook present, four hooks run around the plugin agents: `SubagentStart` injects the rulebook slice of the agent's layer, `PreToolUse` denies a Write or Edit that introduces a static FAIL, `PostToolUse` adds advisory findings, and `SubagentStop` blocks the stop of a pipeline agent while a touched file still has a static FAIL (at most twice, then it releases with the list). Semantic rules are advisory. Kill switch: `NESTJS_HEXAGONAL_DISABLE=1`. Details and disclosure of what is sent to Jev: README sections "Hooks" and "Disclosure".
+
+## Other harnesses (Codex, Cursor, OpenCode): run the CLI
+
+Skills, agents and hooks are Claude Code features. In any other harness the rulebook is still enforced by running the same CLI from the project: `bunx nestjs-hexagonal-check --diff <base> --classes static --strict` in a pre-commit or lint-staged step, `--format json` to feed a reviewer, `prescan` to map a module before editing it. The plugin ships as a dev dependency (`bun add -d github:Softtor/nestjs-hexagonal#v1.3.0`), so the binary and the rulebooks are versioned with the project.
 
 ---
 
@@ -109,8 +163,8 @@ These rules apply to ALL tasks routed through this plugin:
 3. Infrastructure    → Prisma repo, module wiring, adapters, listeners
 4. Presentation      → controllers, request DTOs, Swagger
 5. Broadcasting      → WS gateway + frontend hooks (if real-time needed)
-6. Verification      → lint, types, tests, build
-7. Review (Opus 5)   → architecture compliance + over-engineering audit
+6. Verification      → lint, types, tests, build (package runner from the lockfile)
+7. Review            → nestjs-hexagonal-check (static, then semantic) + residual review (Opus 5)
 ```
 
 Use `nestjs-hexagonal:create-subdomain` to orchestrate this automatically.

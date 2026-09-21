@@ -1,6 +1,6 @@
 # Delivery Checklist
 
-Run this checklist before declaring the bounded context complete. Every item must pass. FAIL items are blocking; WARNING items are advisory.
+Run this checklist before declaring the bounded context complete. Every item must pass. FAIL items are blocking; WARNING items are advisory. `<runner>` is the package runner resolved from the lockfile (see "Package runner" in `nestjs-hexagonal:using-nestjs-hexagonal`).
 
 ---
 
@@ -23,8 +23,8 @@ Run this checklist before declaring the bounded context complete. Every item mus
 - [ ] Domain events implement `IEvent` from `@nestjs/cqrs`
 - [ ] Domain events contain all data handlers will need (no re-fetching in handlers)
 - [ ] Data builders exist in `domain/testing/helpers/` with faker defaults for every required field
-- [ ] Entity unit tests pass: `pnpm test -- --testPathPattern="domain/entities"`
-- [ ] VO unit tests pass: `pnpm test -- --testPathPattern="domain/value-objects"`
+- [ ] Entity unit tests pass: `<runner> test` scoped to `domain/entities`
+- [ ] VO unit tests pass: `<runner> test` scoped to `domain/value-objects`
 
 ---
 
@@ -40,7 +40,7 @@ Run this checklist before declaring the bounded context complete. Every item mus
 - [ ] No `class-validator` decorators in DTOs (`application/dtos/`) — TypeScript interfaces only
 - [ ] Ports defined in consumer's `application/ports/` with `SYMBOL_TOKEN` exported
 - [ ] Application services (`application/services/`) exist only when logic is shared by 2+ handlers
-- [ ] Application unit tests pass: `pnpm test -- --testPathPattern="application"`
+- [ ] Application unit tests pass: `<runner> test` scoped to `application`
 
 ---
 
@@ -63,8 +63,8 @@ Run this checklist before declaring the bounded context complete. Every item mus
 - [ ] Event handlers use `@EventsHandler` + `IEventHandler` — no `@OnEvent` for new code
 - [ ] Event handlers wrap `handle()` body in `try/catch` with `Logger.error(...)` — never re-throw
 - [ ] `organizationId` present in every Prisma query (multi-tenant isolation enforced at repo level)
-- [ ] Infrastructure lint passes: `pnpm lint`
-- [ ] Types compile: `pnpm check-types`
+- [ ] Infrastructure lint passes: `<runner> lint`
+- [ ] Types compile: `<runner> check-types`
 
 ---
 
@@ -82,9 +82,9 @@ Run this checklist before declaring the bounded context complete. Every item mus
 - [ ] All endpoints have `@ApiOperation({ summary: '...' })` and `@ApiResponse` for each status code
 - [ ] Error filter registered: domain `NotFoundError` → 404, `BusinessRuleViolationError` → 422, `ConflictError` → 409
 - [ ] Controller registered in the module's `controllers` array
-- [ ] Presentation lint + types pass: `pnpm lint && pnpm check-types`
-- [ ] Controller unit tests pass: `pnpm test -- --testPathPattern="controller"`
-- [ ] DTO unit tests pass: `pnpm test -- --testPathPattern="request.dto"`
+- [ ] Presentation lint + types pass: `<runner> lint && <runner> check-types`
+- [ ] Controller unit tests pass: `<runner> test` scoped to `controller`
+- [ ] DTO unit tests pass: `<runner> test` scoped to `request.dto`
 
 ---
 
@@ -93,10 +93,11 @@ Run this checklist before declaring the bounded context complete. Every item mus
 - [ ] No circular module dependencies (check with `madge` or `nx graph` if available)
 - [ ] Naming conventions: `kebab-case` for files, `PascalCase` for classes, `SCREAMING_SNAKE_CASE` for token symbols
 - [ ] Multi-tenant: `organizationId` present in every entity, query, and repository operation
-- [ ] `pnpm lint` exits with code 0 — zero errors, zero warnings
-- [ ] `pnpm check-types` exits with code 0 — zero type errors
-- [ ] `pnpm test` passes all tests in the new BC
-- [ ] `pnpm build` exits with code 0
+- [ ] `<runner> lint` exits with code 0 — zero errors, zero warnings
+- [ ] `<runner> check-types` exits with code 0 — zero type errors
+- [ ] `<runner> test` passes all tests in the new BC
+- [ ] `<runner> build` exits with code 0
 - [ ] No `eslint-disable` without a comment explaining why
 - [ ] No `as any` or `as unknown` casts
+- [ ] `nestjs-hexagonal-check --files '<bc>/**/*.ts' --classes static --strict` exits 0
 - [ ] Architecture review (`nestjs-hexagonal:review-subdomain`) reports no FAIL items

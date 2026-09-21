@@ -1,6 +1,6 @@
 # Review Rubric
 
-25 checkpoints grouped by dimension. Each checkpoint specifies: what to check, how to check it (command or read), pass criteria, common violations, and the fix.
+35 checkpoints grouped by dimension. Each checkpoint specifies its **source** — the rulebook rule id that covers it (the finding then comes from `nestjs-hexagonal-check`, steps 1 and 2 of the review) or "residual (agent)" (step 3 performs the check) — plus what to check, how to check it by hand when the CLI is not installed, pass criteria, common violations, and the fix.
 
 Scoring:
 - **PASS** — no issues found
@@ -13,6 +13,8 @@ Scoring:
 
 ### D1 — No @nestjs/common imports in domain
 
+**Source:** hex/domain-no-nest-decorators (static)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "@nestjs/common" <BC_PATH>/domain/ --include="*.ts" -l` |
@@ -23,6 +25,8 @@ Scoring:
 | Exception | `@nestjs/cqrs` is allowed: `AggregateRoot`, `IEvent` |
 
 ### D2 — No class-validator in value objects
+
+**Source:** hex/vo-no-class-validator (static)
 
 | Field | Value |
 |---|---|
@@ -35,6 +39,8 @@ Scoring:
 
 ### D3 — No Prisma in domain
 
+**Source:** hex/domain-no-nest-decorators (static)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "PrismaClient\|PrismaService\|@prisma/client" <BC_PATH>/domain/ --include="*.ts" -l` |
@@ -44,6 +50,8 @@ Scoring:
 | Fix | Define a plain TypeScript interface or use the entity class as the return type |
 
 ### D4 — Entity uses apply() not addDomainEvent()
+
+**Source:** residual (agent)
 
 | Field | Value |
 |---|---|
@@ -55,6 +63,8 @@ Scoring:
 
 ### D5 — Entity has create(), restore(), and private constructor
 
+**Source:** hex/entity-unique-id (static) for the id; create/restore/private constructor: residual (agent)
+
 | Field | Value |
 |---|---|
 | How to check | Read each file in `<BC_PATH>/domain/entities/` |
@@ -65,6 +75,8 @@ Scoring:
 
 ### D6 — Repository interface is pure (no @Injectable, no implementation)
 
+**Source:** hex/repo-interface-in-domain, hex/domain-no-nest-decorators (static)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "@Injectable\|class.*implements" <BC_PATH>/domain/repositories/ --include="*.ts" -l` |
@@ -74,6 +86,8 @@ Scoring:
 | Fix | Move concrete repository to `infrastructure/database/prisma/repositories/`; keep only the interface in domain |
 
 ### D7 — Data builders exist for each entity
+
+**Source:** hex/tests-use-builders (static)
 
 | Field | Value |
 |---|---|
@@ -89,6 +103,8 @@ Scoring:
 
 ### A1 — EventPublisher only in CQRS handlers
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "EventPublisher" <BC_PATH>/application/usecases/ --include="*.ts" -l` |
@@ -98,6 +114,8 @@ Scoring:
 | Fix | Move `publisher.mergeObjectContext(entity)` and `entity.commit()` to the command handler; use case returns the entity |
 
 ### A2 — No class-validator in application layer
+
+**Source:** residual (agent)
 
 | Field | Value |
 |---|---|
@@ -109,6 +127,8 @@ Scoring:
 
 ### A3 — Pattern A use cases have no @Injectable
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "@Injectable" <BC_PATH>/application/usecases/ --include="*.ts" -l` |
@@ -118,6 +138,8 @@ Scoring:
 | Fix | Remove `@Injectable()`; wire via `useFactory` in the module |
 
 ### A4 — Write handlers return void or { id: string }
+
+**Source:** hex/handler-no-business-rules (semantic) for the body; return type: residual (agent)
 
 | Field | Value |
 |---|---|
@@ -129,6 +151,8 @@ Scoring:
 
 ### A5 — commit() called in handlers, not in use cases
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "\.commit()" <BC_PATH>/application/usecases/ --include="*.ts" -l` |
@@ -138,6 +162,8 @@ Scoring:
 | Fix | Move `entity.commit()` to the handler, after `publisher.mergeObjectContext(entity)` |
 
 ### A6 — Ports have TOKEN symbols
+
+**Source:** hex/port-no-infra-leak (semantic) for the signature; TOKEN symbol: residual (agent)
 
 | Field | Value |
 |---|---|
@@ -153,6 +179,8 @@ Scoring:
 
 ### I1 — Module exports only port token symbols
 
+**Source:** hex/module-exports-ports-only (static)
+
 | Field | Value |
 |---|---|
 | How to check | Read `<BC_PATH>/infrastructure/*.module.ts`; inspect the `exports:` array |
@@ -162,6 +190,8 @@ Scoring:
 | Fix | Export only the token: `exports: [ORDER_REPOSITORY]`; consumers inject by token |
 
 ### I2 — Repository has no event dispatch
+
+**Source:** residual (agent)
 
 | Field | Value |
 |---|---|
@@ -173,6 +203,8 @@ Scoring:
 
 ### I3 — Model mapper calls restore() not create()
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `grep -rE "Entity\.create\(|\.create\(" <BC_PATH>/infrastructure/database/prisma/models/ --include="*.ts" -l` |
@@ -182,6 +214,8 @@ Scoring:
 | Fix | Add `static restore()` to the entity; update mapper to call `Entity.restore(props, model.id)` |
 
 ### I4 — In-memory repository exists
+
+**Source:** residual (agent)
 
 | Field | Value |
 |---|---|
@@ -193,6 +227,8 @@ Scoring:
 
 ### I5 — Event handlers use @EventsHandler not @OnEvent
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "@OnEvent" <BC_PATH>/infrastructure/listeners/ --include="*.ts" -l` |
@@ -203,6 +239,8 @@ Scoring:
 
 ### I6 — Event handlers have try/catch
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | How to check | Read each file in `<BC_PATH>/infrastructure/listeners/`; confirm `handle()` has `try {` |
@@ -212,6 +250,8 @@ Scoring:
 | Fix | Wrap body in `try { ... } catch (error) { this.logger.error(...) }` |
 
 ### I7 — Prisma search() scopes by tenant
+
+**Source:** softtor/tenant-scoped-query (static) when the project extends softtor-conventions; otherwise residual (agent)
 
 | Field | Value |
 |---|---|
@@ -227,6 +267,8 @@ Scoring:
 
 ### P1 — class-validator only in request DTOs
 
+**Source:** hex/vo-no-class-validator (static) for VOs; presence in request DTOs: residual (agent)
+
 | Field | Value |
 |---|---|
 | How to check | Confirm class-validator imports are only in `<BC_PATH>/infrastructure/controllers/dtos/` |
@@ -236,6 +278,8 @@ Scoring:
 | Fix | Move validation decorators to the request DTO class |
 
 ### P2 — organizationId not from request body
+
+**Source:** residual (agent)
 
 | Field | Value |
 |---|---|
@@ -247,6 +291,8 @@ Scoring:
 
 ### P3 — Swagger decorators present
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "@ApiOperation\|@ApiResponse\|@ApiTags" <BC_PATH>/infrastructure/controllers/ --include="*.ts" -l` |
@@ -256,6 +302,8 @@ Scoring:
 
 ### P4 — Guards applied to controller
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `grep -r "@UseGuards\|@ApiBearerAuth" <BC_PATH>/infrastructure/controllers/ --include="*.ts" -l` |
@@ -264,6 +312,8 @@ Scoring:
 | Fix | Add `@UseGuards(AuthGuard)` and `@ApiBearerAuth()` at the controller class level |
 
 ### P5 — No business logic in controller methods
+
+**Source:** hex/controller-thin (semantic)
 
 | Field | Value |
 |---|---|
@@ -278,6 +328,8 @@ Scoring:
 
 ### T1 — Entity specs exist
 
+**Source:** residual (agent); hex/tests-coverage is a runtime rule, inert in this version
+
 | Field | Value |
 |---|---|
 | Command | `find <BC_PATH>/domain/entities/__tests__ -name "*.spec.ts" 2>/dev/null` |
@@ -286,6 +338,8 @@ Scoring:
 | Fix | Add entity spec covering `create()`, `restore()`, and each mutating method (see `create-subdomain/references/tdd-workflow.md`) |
 
 ### T2 — VO specs exist
+
+**Source:** residual (agent); hex/tests-coverage is a runtime rule, inert in this version
 
 | Field | Value |
 |---|---|
@@ -296,6 +350,8 @@ Scoring:
 
 ### T3 — Application specs exist
 
+**Source:** residual (agent); hex/tests-coverage is a runtime rule, inert in this version
+
 | Field | Value |
 |---|---|
 | Command | `find <BC_PATH>/application -name "*.spec.ts" 2>/dev/null` |
@@ -305,6 +361,8 @@ Scoring:
 
 ### T4 — Controller specs exist
 
+**Source:** residual (agent); hex/tests-coverage is a runtime rule, inert in this version
+
 | Field | Value |
 |---|---|
 | Command | `find <BC_PATH>/infrastructure/controllers/__tests__ -name "*.spec.ts" 2>/dev/null` |
@@ -313,6 +371,8 @@ Scoring:
 | Fix | Add controller spec mocking CommandBus/QueryBus |
 
 ### T5 — In-memory repository used in application tests
+
+**Source:** hex/tests-use-builders (static) for builders; in-memory repository usage: residual (agent)
 
 | Field | Value |
 |---|---|
@@ -327,6 +387,8 @@ Scoring:
 
 ### M1 — Standard directories present
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | How to check | Verify `domain/entities/`, `domain/repositories/`, `domain/events/`, `application/`, `infrastructure/` |
@@ -336,6 +398,8 @@ Scoring:
 
 ### M2 — Module file exists in infrastructure
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | Command | `find <BC_PATH>/infrastructure -maxdepth 1 -name "*.module.ts" 2>/dev/null` |
@@ -344,6 +408,8 @@ Scoring:
 | Fix | Create `<Context>Module` with `@Module({ imports, controllers, providers, exports })` |
 
 ### M3 — No cross-layer imports (domain/application importing infrastructure)
+
+**Source:** hex/domain-no-nest-decorators, hex/no-circular-import (static)
 
 | Field | Value |
 |---|---|
@@ -355,6 +421,8 @@ Scoring:
 
 ### M4 — File naming conventions
 
+**Source:** residual (agent)
+
 | Field | Value |
 |---|---|
 | How to check | Spot-check 3–5 files per layer against naming conventions |
@@ -363,6 +431,8 @@ Scoring:
 | Fix | Rename files to follow conventions; update all imports |
 
 ### M5 — No circular dependencies
+
+**Source:** hex/no-circular-import (static); forwardRef in module imports: residual (agent)
 
 | Field | Value |
 |---|---|

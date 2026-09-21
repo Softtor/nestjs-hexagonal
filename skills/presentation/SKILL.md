@@ -302,4 +302,4 @@ Always add `@ApiOperation`, `@ApiResponse`, and `@ApiProperty`. Include request 
 - [ ] Swagger: `@ApiOperation`, `@ApiResponse` for all endpoints
 - [ ] Controller tests: mock `CommandBus`/`QueryBus`, test routing and DTO mapping
 - [ ] DTO tests: use `class-validator` `validate()` to test valid/invalid inputs
-- [ ] Run `pnpm lint && pnpm check-types` before committing
+- [ ] Run `<runner> lint && <runner> check-types` before committing (`<runner>` from the lockfile, see "Package runner" in `nestjs-hexagonal:using-nestjs-hexagonal`)
