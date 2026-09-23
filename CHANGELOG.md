@@ -2,6 +2,12 @@
 
 All notable changes to this plugin. Versions follow `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, which CI keeps identical; a GitHub Release carries the same tag.
 
+## 1.3.1 — 2026-09-22
+
+### Changed
+
+- Agents pinned to Claude Opus 5 now pin **Claude Opus 5.5** (`claude-opus-5-5`): `domain-agent`, `architecture-reviewer` and `event-debug-agent`. The `frontmatter` CI job accepts `claude-opus-5-5` in place of `claude-opus-5`. Requires Claude Code v2.1.280+.
+
 ## 1.3.0 — 2026-09-20
 
 Rulebook-driven agents and semantic rules. Sum of the four pull requests P1–P4 of the Jev plan.
