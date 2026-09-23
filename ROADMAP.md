@@ -1,18 +1,18 @@
 # Roadmap — NestJS Hexagonal Plugin
 
-Community contribution tracks after the Claude Opus 5 / Sonnet 5 model upgrade.
+Community contribution tracks after the Claude Opus 5.5 / Sonnet 5 model upgrade.
 Pick an item, open or claim an issue, and follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Done recently
 
-- [x] Pin agents to Claude Opus 5 / Claude Sonnet 5 (`claude-opus-5`, `claude-sonnet-5`)
-- [x] Align `create-subdomain` review phase with Opus 5 (was incorrectly Sonnet)
+- [x] Pin agents to Claude Opus 5.5 / Claude Sonnet 5 (`claude-opus-5-5`, `claude-sonnet-5`)
+- [x] Align `create-subdomain` review phase with Opus 5.5 (was incorrectly Sonnet)
 - [x] Document contribution paths and good-first-issue tracks
 - [x] Rulebook (`hexagonal`, `softtor-conventions`), `nestjs-hexagonal-check` CLI, opt-in hooks (1.2.0, 1.3.0)
 - [x] Semantic rules through Jev with a calibration harness and fitted thresholds (1.3.0)
 - [x] Rulebook-driven layer agents, checker-first reviewer, three-step `review-subdomain`, lockfile package runner (1.3.0)
 - [x] Skill/agent frontmatter, reference and link CI ([#7](https://github.com/Softtor/nestjs-hexagonal/issues/7), 1.3.0)
-- [x] `prescan` subcommand and a minimal read-only `explore-agent` on Haiku ([#2](https://github.com/Softtor/nestjs-hexagonal/issues/2), partially: the agent exists and is routed from `using-nestjs-hexagonal`; the "when to use Haiku vs Sonnet 5 vs Opus 5" guide and a richer inventory remain open)
+- [x] `prescan` subcommand and a minimal read-only `explore-agent` on Haiku ([#2](https://github.com/Softtor/nestjs-hexagonal/issues/2), partially: the agent exists and is routed from `using-nestjs-hexagonal`; the "when to use Haiku vs Sonnet 5 vs Opus 5.5" guide and a richer inventory remain open)
 
 ## Good first issues
 

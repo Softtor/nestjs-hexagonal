@@ -30,7 +30,7 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | Task | Route to | Type |
 |------|----------|------|
 | Create new bounded context / module | `nestjs-hexagonal:create-subdomain` | Skill (orchestrator) |
-| Create entity (AggregateRoot) | `nestjs-hexagonal:domain-agent` | Agent (Opus 5) |
+| Create entity (AggregateRoot) | `nestjs-hexagonal:domain-agent` | Agent (Opus 5.5) |
 | Create value object | `nestjs-hexagonal:domain` | Skill |
 | Create domain event | `nestjs-hexagonal:domain` | Skill |
 | Create repository interface | `nestjs-hexagonal:domain` | Skill |
@@ -55,10 +55,10 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | Task | Route to | Type |
 |------|----------|------|
 | Map an existing module before changing it | `nestjs-hexagonal:explore-agent` | Agent (Haiku, read-only) |
-| Review bounded context | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5) |
-| Check for over-engineering | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5) |
-| Debug event not reaching frontend | `nestjs-hexagonal:event-debug-agent` | Agent (Opus 5) |
-| Debug event not being consumed | `nestjs-hexagonal:event-debug-agent` | Agent (Opus 5) |
+| Review bounded context | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5.5) |
+| Check for over-engineering | `nestjs-hexagonal:architecture-reviewer` | Agent (Opus 5.5) |
+| Debug event not reaching frontend | `nestjs-hexagonal:event-debug-agent` | Agent (Opus 5.5) |
+| Debug event not being consumed | `nestjs-hexagonal:event-debug-agent` | Agent (Opus 5.5) |
 
 ### Setting Up
 
@@ -76,16 +76,16 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | Decision Type | Agent | Model | Why |
 |---|---|---|---|
 | Read-only map of an existing module | `explore-agent` | Haiku | Cheap scan (`prescan`) before Opus/Sonnet touch anything |
-| Domain modeling (what entities, VOs, events) | `domain-agent` | **Opus 5** | Critical architectural decisions |
-| Architecture review | `architecture-reviewer` | **Opus 5** | Deep judgment for smells + over-engineering |
-| Event chain debugging | `event-debug-agent` | **Opus 5** | 6-layer systematic tracing |
+| Domain modeling (what entities, VOs, events) | `domain-agent` | **Opus 5.5** | Critical architectural decisions |
+| Architecture review | `architecture-reviewer` | **Opus 5.5** | Deep judgment for smells + over-engineering |
+| Event chain debugging | `event-debug-agent` | **Opus 5.5** | 6-layer systematic tracing |
 | Application layer (use cases, handlers) | `application-agent` | Sonnet 5 | Follows established patterns |
 | Infrastructure (repos, modules) | `infrastructure-agent` | Sonnet 5 | Mechanical pattern application |
 | Presentation (controllers, DTOs) | `presentation-agent` | Sonnet 5 | Mechanical pattern application |
 | WebSocket + frontend | `broadcasting-agent` | Sonnet 5 | Follows WS skill patterns |
 | Event listeners | `listener-agent` | Sonnet 5 | Follows listener skill patterns |
 
-**Rule:** Use Haiku to LOOK (read-only map), Opus 5 for DECISIONS (what to build), Sonnet 5 for EXECUTION (how to build it).
+**Rule:** Use Haiku to LOOK (read-only map), Opus 5.5 for DECISIONS (what to build), Sonnet 5 for EXECUTION (how to build it).
 
 ---
 
@@ -159,13 +159,13 @@ These rules apply to ALL tasks routed through this plugin:
 ## Workflow Order (when building a full BC)
 
 ```
-1. Domain (Opus 5)   → entities, VOs, events, repo interface, data builders
+1. Domain (Opus 5.5)   → entities, VOs, events, repo interface, data builders
 2. Application       → use cases / handlers, DTOs, ports
 3. Infrastructure    → Prisma repo, module wiring, adapters, listeners
 4. Presentation      → controllers, request DTOs, Swagger
 5. Broadcasting      → WS gateway + frontend hooks (if real-time needed)
 6. Verification      → lint, types, tests, build (package runner from the lockfile)
-7. Review            → nestjs-hexagonal-check (static, then semantic) + residual review (Opus 5)
+7. Review            → nestjs-hexagonal-check (static, then semantic) + residual review (Opus 5.5)
 ```
 
 Use `nestjs-hexagonal:create-subdomain` to orchestrate this automatically.

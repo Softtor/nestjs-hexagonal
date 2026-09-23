@@ -52,14 +52,14 @@ When executing GSD phases that involve creating or modifying bounded contexts, u
 
 | Task | Skill / Agent | Model |
 |------|---------------|-------|
-| Domain modeling (entities, VOs, events) | `nestjs-hexagonal:domain-agent` | Opus 5 |
+| Domain modeling (entities, VOs, events) | `nestjs-hexagonal:domain-agent` | Opus 5.5 |
 | Application layer (use cases, handlers) | `nestjs-hexagonal:application-agent` | Sonnet 5 |
 | Infrastructure (repos, modules, adapters) | `nestjs-hexagonal:infrastructure-agent` | Sonnet 5 |
 | Presentation (controllers, DTOs, Swagger) | `nestjs-hexagonal:presentation-agent` | Sonnet 5 |
 | WebSocket broadcasting | `nestjs-hexagonal:broadcasting-agent` | Sonnet 5 |
-| Architecture review | `nestjs-hexagonal:architecture-reviewer` | Opus 5 |
+| Architecture review | `nestjs-hexagonal:architecture-reviewer` | Opus 5.5 |
 | Full BC scaffold | `nestjs-hexagonal:create-subdomain` | Orchestrator |
-| Event chain debugging | `nestjs-hexagonal:event-debug-agent` | Opus 5 |
+| Event chain debugging | `nestjs-hexagonal:event-debug-agent` | Opus 5.5 |
 
 ### Architecture Rules (enforced)
 
@@ -75,13 +75,13 @@ When executing GSD phases that involve creating or modifying bounded contexts, u
 When creating a new bounded context via GSD, use this phase structure:
 
 Phase X: <BC Name> Domain + Application
-  - Task 1: Domain modeling (dispatch domain-agent, Opus 5)
+  - Task 1: Domain modeling (dispatch domain-agent, Opus 5.5)
   - Task 2: Application layer (dispatch application-agent, Sonnet 5)
 
 Phase X+1: <BC Name> Infrastructure + Presentation
   - Task 1: Infrastructure wiring (dispatch infrastructure-agent, Sonnet 5)
   - Task 2: Presentation layer (dispatch presentation-agent, Sonnet 5)
-  - Task 3: Architecture review (dispatch architecture-reviewer, Opus 5)
+  - Task 3: Architecture review (dispatch architecture-reviewer, Opus 5.5)
 ```
 
 ## Step 3: Ask About GSD State

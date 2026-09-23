@@ -58,7 +58,7 @@ bunx nestjs-hexagonal-check --rulebook hexagonal --files '<BC_PATH>/**/*.ts' --c
 
 ## Step 3 — Residual review (agent)
 
-Dispatch `nestjs-hexagonal:architecture-reviewer` (Claude Opus 5) with `BC_PATH` and the two JSON files. Its judgment covers only:
+Dispatch `nestjs-hexagonal:architecture-reviewer` (Claude Opus 5.5) with `BC_PATH` and the two JSON files. Its judgment covers only:
 
 1. semantic outcomes `uncertain`, `uncalibrated` and the `undecided` batches, plus the semantic rules skipped for lack of a key;
 2. semantic findings with severity WARN (`advise`/`ask`): confirm or dismiss with evidence;

@@ -1,7 +1,7 @@
 {
   "name": "nestjs-hexagonal",
   "description": "Skills, agents, rulebook checker and hooks for NestJS bounded contexts with Hexagonal Architecture, DDD, and CQRS. Layer agents are rulebook-driven; a CLI runs the static rules offline and the semantic rules through Jev when a key is set.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "author": {
     "name": "Softtor",
     "url": "https://github.com/softtor"

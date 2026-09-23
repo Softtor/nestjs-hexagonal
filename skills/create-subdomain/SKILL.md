@@ -1,6 +1,6 @@
 ---
 name: create-subdomain
-description: Orchestrates creation of a NestJS bounded context by dispatching specialized agents per layer (domain, application, infrastructure, presentation). Uses Claude Opus 5 for domain modeling and review, Claude Sonnet 5 for execution layers. Compatible with GSD workflow (usable as phase execution). Follows TDD, Hexagonal Architecture, DDD, and CQRS.
+description: Orchestrates creation of a NestJS bounded context by dispatching specialized agents per layer (domain, application, infrastructure, presentation). Uses Claude Opus 5.5 for domain modeling and review, Claude Sonnet 5 for execution layers. Compatible with GSD workflow (usable as phase execution). Follows TDD, Hexagonal Architecture, DDD, and CQRS.
 argument-hint: Entity name (e.g., "Invoice" or "billing/invoices")
 allowed-tools:
   - Read
@@ -70,14 +70,14 @@ After answers, create the directory structure:
 
 ---
 
-## Phase 2 — Domain Layer via `domain-agent` (Claude Opus 5)
+## Phase 2 — Domain Layer via `domain-agent` (Claude Opus 5.5)
 
 Dispatch the domain-agent with context from Phase 1:
 
 ```
 Agent tool:
   subagent_type: "nestjs-hexagonal:domain-agent"
-  model: claude-opus-5
+  model: claude-opus-5-5
   prompt: |
     Create domain layer for "<context>" at "<path>".
     Entity: <name>, Props: <list>
@@ -170,7 +170,7 @@ All must exit 0. Fix root causes, no suppression. If the checker is not installe
 
 ## Phase 7 — Architecture Review via `review-subdomain`
 
-Invoke `nestjs-hexagonal:review-subdomain` with `<path>`. It runs the three review steps: static rulebook (`nestjs-hexagonal-check --classes static --format json`), semantic rulebook (`--classes semantic`, one batch per file, skipped without `TYPESAFE_API_KEY`) and the residual review by the `architecture-reviewer` agent (Claude Opus 5), which receives the checker JSON and judges only what the rulebook could not decide. The report keeps the PASS / WARNING / FAIL format, each finding citing its rule id or `residual`.
+Invoke `nestjs-hexagonal:review-subdomain` with `<path>`. It runs the three review steps: static rulebook (`nestjs-hexagonal-check --classes static --format json`), semantic rulebook (`--classes semantic`, one batch per file, skipped without `TYPESAFE_API_KEY`) and the residual review by the `architecture-reviewer` agent (Claude Opus 5.5), which receives the checker JSON and judges only what the rulebook could not decide. The report keeps the PASS / WARNING / FAIL format, each finding citing its rule id or `residual`.
 
 Address every FAIL. Report to user: structure, pattern, decisions, deferred warnings, and the rulebook run summary (rulebook id and version, counts, whether semantic ran).
 
@@ -183,12 +183,12 @@ This workflow maps directly to GSD phases:
 | GSD Phase | create-subdomain Phase | Agent |
 |---|---|---|
 | Research | Phase 1 (requirements) | inline |
-| Execute task 1 | Phase 2 (domain) | domain-agent (Opus 5) |
+| Execute task 1 | Phase 2 (domain) | domain-agent (Opus 5.5) |
 | Execute task 2 | Phase 3 (application) | application-agent (Sonnet 5) |
 | Execute task 3 | Phase 4 (infrastructure) | infrastructure-agent (Sonnet 5) |
 | Execute task 4 | Phase 5 (presentation) | presentation-agent (Sonnet 5) |
 | Verify | Phase 6 (verification) | inline (package runner + nestjs-hexagonal-check) |
-| Review | Phase 7 (review) | review-subdomain: CLI static, CLI semantic, architecture-reviewer (Opus 5) residual |
+| Review | Phase 7 (review) | review-subdomain: CLI static, CLI semantic, architecture-reviewer (Opus 5.5) residual |
 
 When used within GSD, each phase can be a separate GSD task tracked in the plan.
 
