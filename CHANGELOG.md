@@ -2,7 +2,7 @@
 
 All notable changes to this plugin. Versions follow `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, which CI keeps identical; a GitHub Release carries the same tag.
 
-## Unreleased
+## 1.3.2 — 2026-10-08
 
 ### Added
 
