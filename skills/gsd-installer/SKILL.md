@@ -63,9 +63,9 @@ When executing GSD phases that involve creating or modifying bounded contexts, u
 
 ### Architecture Rules (enforced)
 
-1. Entity extends `AggregateRoot` from `@nestjs/cqrs`
+1. Entity is pure TypeScript
 2. Repository is PURE persistence — no event dispatch
-3. EventPublisher in Handler only, NEVER in UseCase
+3. EventDispatcher in Handler only, NEVER in UseCase
 4. Module exports ONLY Port tokens
 5. class-validator ONLY in presentation request DTOs
 6. Write returns void or `{ id: string }`

@@ -85,7 +85,7 @@ describe('<Name>Entity', () => {
   describe('update()', () => {
     it('updates the name and touches updatedAt', () => {
       const entity = <Name>Entity.create(<Name>DataBuilder());
-      entity.commit(); // clear creation event
+      entity.getUncommittedEvents().forEach((event) => entity.acknowledgeEvent(event)); // discard creation events in this fixture only
 
       entity.update('updated-name');
 
@@ -95,7 +95,7 @@ describe('<Name>Entity', () => {
 
     it('applies <Name>UpdatedEvent after update', () => {
       const entity = <Name>Entity.create(<Name>DataBuilder());
-      entity.commit();
+      events.from(entity).publish();
 
       entity.update('new-name');
       const events = entity.getUncommittedEvents();
@@ -240,7 +240,8 @@ describe('Create<Context>UseCase', () => {
 // application/commands/__tests__/create-<context>.handler.spec.ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { faker } from '@faker-js/faker';
-import { EventPublisher } from '@nestjs/cqrs';
+import { dispatch } from '@/shared/events/event-dispatcher';
+import { InMemoryEventPublisher } from '@/shared/events/in-memory-event-publisher';
 import { Create<Context>Handler } from '../create-<context>.handler';
 import { Create<Context>Command } from '../create-<context>.command';
 import { <Context>InMemoryRepository } from '../../../infrastructure/database/in-memory/repositories/<context>-in-memory.repository';
@@ -248,15 +249,15 @@ import { <Context>InMemoryRepository } from '../../../infrastructure/database/in
 describe('Create<Context>Handler', () => {
   let handler: Create<Context>Handler;
   let repository: <Context>InMemoryRepository;
-  let publisher: EventPublisher;
+  let publisher: InMemoryEventPublisher;
 
   beforeEach(() => {
     repository = new <Context>InMemoryRepository();
-    publisher = {
-      mergeObjectContext: vi.fn().mockImplementation((entity) => entity),
-    } as unknown as EventPublisher;
+    publisher = new InMemoryEventPublisher(() => {
+      expect(repository.items.size).toBe(1); // persistence precedes publication
+    });
 
-    handler = new Create<Context>Handler(repository, publisher);
+    handler = new Create<Context>Handler(repository, dispatch(publisher));
   });
 
   it('returns { id } and persists entity', async () => {
@@ -271,7 +272,7 @@ describe('Create<Context>Handler', () => {
     expect(repository.items.size).toBe(1);
   });
 
-  it('calls publisher.mergeObjectContext with the entity', async () => {
+  it('publishes only after persistence', async () => {
     const command = new Create<Context>Command(
       faker.string.uuid(),
       faker.commerce.productName(),
@@ -279,7 +280,7 @@ describe('Create<Context>Handler', () => {
 
     await handler.execute(command);
 
-    expect(publisher.mergeObjectContext).toHaveBeenCalledOnce();
+    expect(publisher.publications).toHaveLength(1);
   });
 });
 ```
@@ -287,7 +288,7 @@ describe('Create<Context>Handler', () => {
 **What to assert in application tests:**
 - Output shape matches the DTO interface exactly
 - Repository `items` (in-memory) grows by 1 after a create operation
-- `publisher.mergeObjectContext` is called once per write operation (Pattern B/C)
+- Publications contain the expected domain event, persistence precedes publication, and persistence failure produces no publications
 - Error propagation: domain errors from entity construction bubble up
 - Query handlers: `null` from repo triggers `NotFoundException`
 - Pattern C: ports are called with correct arguments before use case is invoked

@@ -7,6 +7,8 @@ const ORCHESTRATOR_INSTANCE = /\bnew\s+\w*UseCase(?:\.\w+)?\s*\(/;
 const PLAIN_USE_CASE = /\bexecute\s*\(/;
 const TOKEN_EXPORT = /export\s+const\s+\w+\s*=\s*Symbol\s*\(/;
 const EVENT_PUBLISHER = /\bEventPublisher\b|\.commit\s*\(\)/;
+const EVENT_DISPATCHER = /\bEventDispatcher\b/;
+const FLUENT_PUBLICATION = /\.(?:from|event)\s*\([^;]*?\.publish\$?\s*\(/;
 
 export function classifyPattern(content: string): Pattern | null {
   const masked = maskCommentsAndStrings(content);
@@ -14,7 +16,7 @@ export function classifyPattern(content: string): Pattern | null {
     if (ORCHESTRATOR_INSTANCE.test(masked)) {
       return 'C';
     }
-    return EVENT_PUBLISHER.test(masked) ? 'B' : null;
+    return EVENT_PUBLISHER.test(masked) || EVENT_DISPATCHER.test(masked) || FLUENT_PUBLICATION.test(masked) ? 'B' : null;
   }
   if (PLAIN_USE_CASE.test(masked) && TOKEN_EXPORT.test(masked)) {
     return 'A';
@@ -66,4 +68,3 @@ export const patternConsistentExecutor: Executor = (rule, scopedFiles) => {
   }
   return findings;
 };
-

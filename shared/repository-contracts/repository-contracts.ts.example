@@ -90,18 +90,19 @@ export interface RepositoryInterface<E extends Entity> {
 // })
 // export class CustomerModule {}
 //
-// // 5. Inject in a use case / command handler
+// // 5. Inject in a command handler (dispatcher provider configured in module)
+// import { EVENT_DISPATCHER_TOKEN } from '@/shared/events/event-publisher.port';
+// import { EventDispatcher } from '@/shared/events/event-dispatcher';
 // @CommandHandler(CreateCustomerCommand)
 // export class CreateCustomerHandler {
 //   constructor(
 //     @Inject(CUSTOMER_REPOSITORY) private readonly repo: CustomerRepositoryPort,
-//     private readonly publisher: EventPublisher,
+//     @Inject(EVENT_DISPATCHER_TOKEN) private readonly events: EventDispatcher,
 //   ) {}
 //
 //   async execute(command: CreateCustomerCommand): Promise<void> {
 //     const customer = Customer.create({ name: command.name, email: command.email });
-//     this.publisher.mergeObjectContext(customer);
 //     await this.repo.insert(customer);
-//     customer.commit();
+//     await this.events.from(customer).publish(); // after actual transaction commit
 //   }
 // }

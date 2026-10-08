@@ -9,7 +9,7 @@ This plugin provides layer-specific skills, specialized agents, and workflow orc
 **Who it's for:** Teams building NestJS applications that follow clean architecture and want consistent, reviewable code.
 
 **Key patterns:**
-- Entity modeling with `AggregateRoot`, domain events via `entity.commit()`, and `EventBus`
+- Pure TypeScript entities and events, fluent typed dispatcher, and configurable EventBus or broker publishers
 - Value Objects (scalar, composed, enum, state machine)
 - Repository interfaces as ports with Prisma and in-memory implementations
 - Three application patterns (plain UseCase, CQRS Command/Query, Handler-as-Orchestrator)
@@ -30,7 +30,7 @@ This plugin provides layer-specific skills, specialized agents, and workflow orc
 /plugin install nestjs-hexagonal
 ```
 
-The plugin prompts for two optional values when enabled: `TYPESAFE_API_KEY` (semantic rules; leave empty to stay offline) and `package_runner` (`bun run`, `pnpm`, `npm run` or `yarn`; leave empty to detect it from each project's lockfile). To pin the CLI in a project, `bun add -d github:Softtor/nestjs-hexagonal#v1.3.0` (see [Onboarding another project](#onboarding-another-project)).
+The plugin prompts for two optional values when enabled: `TYPESAFE_API_KEY` (semantic rules; leave empty to stay offline) and `package_runner` (`bun run`, `pnpm`, `npm run` or `yarn`; leave empty to detect it from each project's lockfile). To pin the CLI in a project, `bun add -d github:Softtor/nestjs-hexagonal#v1.4.0` (see [Onboarding another project](#onboarding-another-project)).
 
 ### Local development
 
@@ -47,7 +47,7 @@ Claude Code installs the Node dependencies of a plugin it copies into its cache 
 
 | Skill | Trigger examples | What it does |
 |---|---|---|
-| `nestjs-hexagonal:domain` | "create entity", "new value object" | Entity (AggregateRoot), VOs, events, repo interfaces, data builders |
+| `nestjs-hexagonal:domain` | "create entity", "new value object" | Entity (pure TypeScript), VOs, events, repo interfaces, data builders |
 | `nestjs-hexagonal:application` | "create use case", "cqrs handler" | Use cases, handlers, DTOs, ports, read models |
 | `nestjs-hexagonal:infrastructure` | "prisma repo", "module wiring" | Prisma repos, mappers, adapters, NestJS modules |
 | `nestjs-hexagonal:presentation` | "create controller", "request dto" | Controllers, request DTOs, Swagger, error filters |
@@ -94,14 +94,14 @@ UseCase
   -> return entity                    # UseCase returns entity to Handler
 
 Handler
-  -> publisher.mergeObjectContext(entity)   # Handler wraps entity
-  -> entity.commit()                       # Handler dispatches via EventBus
+  -> await transactionCommit              # wait for the actual transaction commit, if present
+  -> await events.from(entity).publish()    # publish through the configured adapter
   -> return { id: entity.id }
 
 EventBus -> @EventsHandler             # Side effects, projections, WS broadcast
 ```
 
-**Critical rule:** `EventPublisher` lives in the Handler, NEVER in the UseCase.
+**Critical rule:** `EventDispatcher` lives in the Handler, NEVER in the UseCase.
 
 ### Pattern Selection (Application Layer)
 
@@ -138,7 +138,7 @@ The architecture rules above also exist as a machine-readable **rulebook** (`rul
 bun scripts/check.ts --rulebook hexagonal --files 'src/**/*.ts' --classes static --format text
 
 # from a project that installed the plugin as a dev dependency
-bun add -d github:Softtor/nestjs-hexagonal#v1.3.0
+bun add -d github:Softtor/nestjs-hexagonal#v1.4.0
 bunx nestjs-hexagonal-check --files 'apps/api/src/**/*.ts' --strict
 bunx nestjs-hexagonal-check --diff origin/main --format json
 bunx nestjs-hexagonal-check prescan --files 'apps/api/src/orders/**/*.ts'   # map: layer, kind, size, spec sibling
@@ -228,7 +228,7 @@ The skill `nestjs-hexagonal:onboard-project` is the executable version of this l
 
 1. Create `.claude/rulebook.yaml` extending `hexagonal` (and `softtor-conventions` only if multi-tenant scoping, no emoji and English identifiers are conventions of that project). `nestjs-hexagonal-check stamp hexagonal softtor-conventions` prints the `extends` block with the sha256 of the installed copies.
 2. Set the key, if semantic rules are wanted: answer the `TYPESAFE_API_KEY` prompt when enabling the plugin (stored in the keychain, exported to the hooks as `CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY`) or export `TYPESAFE_API_KEY` in the shell. The option is read first.
-3. Pin the CLI in the project so the hooks and the CI run the same version: `bun add -d github:Softtor/nestjs-hexagonal#v1.3.0`. The hooks prefer `node_modules/.bin/nestjs-hexagonal-check` when it exists.
+3. Pin the CLI in the project so the hooks and the CI run the same version: `bun add -d github:Softtor/nestjs-hexagonal#v1.4.0`. The hooks prefer `node_modules/.bin/nestjs-hexagonal-check` when it exists.
 4. Run `bunx nestjs-hexagonal-check --files 'src/**/*.ts' --strict` once to see the baseline, and add it to lint-staged or CI.
 5. Optional: `NESTJS_HEXAGONAL_RULEBOOK` in `.claude/settings.json` `env` when the rulebook lives elsewhere.
 6. Other harnesses (Codex, Cursor, OpenCode) get no hooks or agents; they run the same CLI from the project (`--diff <base> --strict` in a pre-commit step, `--format json` for a reviewer, `prescan` before editing).
@@ -266,10 +266,15 @@ The `shared/` directory contains `.ts.example` reference implementations for pro
 
 | File | What it provides |
 |---|---|
-| `entity.ts.example` | Entity extending AggregateRoot with `apply()` |
+| `entity.ts.example` | Pure Entity with `apply()`, snapshot and acknowledgement |
 | `value-object.ts.example` | Abstract ValueObject with validation |
 | `unique-entity-id.ts.example` | UUID-based entity ID |
-| `domain-event.ts.example` | IEvent implementation |
+| `domain-event.ts.example` | Pure DomainEvent with stable metadata |
+| `events/event-publisher.port.ts.example` | Publication contract and publisher/dispatcher DI tokens |
+| `events/event-dispatcher.ts.example` | Typed fluent dispatcher with Promise and cold Observable publication |
+| `events/in-memory-event-publisher.ts.example` | Recording publisher for tests |
+| `infrastructure/event-bus-event-publisher.ts.example` | EventBus instance routing and explicit named-event factories |
+| `infrastructure/nest-event-publisher-adapter.ts.example` | Infrastructure adapter for legacy NestJS compatibility |
 | `repository-contracts.ts.example` | Pure persistence interface |
 | `searchable-repository.ts.example` | SearchParams + SearchResult + SearchableRepositoryInterface |
 | `in-memory-searchable.ts.example` | In-memory repo for unit tests |
@@ -312,3 +317,16 @@ Community contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), 
 ## License
 
 MIT
+
+## Fluent event dispatcher and migration
+
+```typescript
+const events = dispatch<OrderEvents>(publisher);
+await events.event('order.created').with({ orderId, total }).keyedBy(orderId).publish();
+await events.event(new OrderCreatedEvent(orderId, total)).publish();
+await events.from(order).publish(); // after persistence and actual transaction commit
+```
+
+Inject the dispatcher through `EVENT_DISPATCHER_TOKEN`; configure the publisher through `EVENT_PUBLISHER_TOKEN`. Named events require typed payloads; EventBus names require explicit factories to preserve class listener routing. `publish$()` is cold, and each execution or subscription publishes. Queued events are acknowledged sequentially only after success; a failure retains the failed and following events.
+
+Read the [dispatcher reference and migration guide](skills/application/references/event-dispatcher.md) for providers, RxJS, broker mapping and legacy compatibility. Updating the plugin does not rewrite previously copied templates. EventBus success confirms handoff, and broker success follows adapter acknowledgement. There is no exactly-once guarantee, persistent retry or outbox; uncertain delivery requires stable IDs and consumers that tolerate duplicates.

@@ -1,25 +1,25 @@
 # Entity Patterns
 
-Entities are the core building blocks of a bounded context. Each entity extends `Entity` from `@/shared/base-classes/entity`, which itself extends `AggregateRoot` from `@nestjs/cqrs`.
+Entities are the core building blocks of a bounded context. Each entity extends `Entity` from `@/shared/base-classes/entity`, which is pure TypeScript and owns a pending event queue.
 
 ## Event Lifecycle — Critical Understanding
 
-`this.apply(event)` inside an entity method does **not** publish the event. It queues the event in `AggregateRoot`'s internal list. The actual dispatch happens later, in the **command handler**, when `entity.commit()` is called.
+`this.apply(event)` inside an entity method does **not** publish the event. It queues the event in `Entity`'s internal list. The actual dispatch happens later, in the **command handler**, when `await events.from(entity).publish()` is called.
 
 ```
 1. Entity.create(props)
        └─ internally: this.apply(new XCreatedEvent(...))   ← queued, not published
 
-2. Handler calls: publisher.mergeObjectContext(entity)      ← wires EventBus to entity
-3. Handler calls: await repo.save(entity)                   ← pure persistence, no events
-4. Handler calls: entity.commit()                           ← publishes queued events to EventBus
-5. @EventsHandler(XCreatedEvent) picks it up
+2. Handler calls: await repo.save(entity)                  ← pure persistence
+3. Transaction commits                                    ← actual database commit
+4. Handler calls: await events.from(entity).publish()      ← snapshot published via adapter
+5. EventBus adapter hands instances to @EventsHandler listeners
 ```
 
 Rules that follow from this:
-- The entity never calls `commit()` on itself
-- The repository never calls `commit()` or reads events — it is pure persistence
-- The handler is responsible for the full lifecycle: merge + save + commit
+- The entity never calls `publish()` on itself
+- The repository never calls `publish()` or reads events — it is pure persistence
+- The handler is responsible for the full lifecycle: persist + transaction commit + publish
 - `restore()` never queues events (it is for DB hydration, not new domain activity)
 
 ---
@@ -61,7 +61,7 @@ export class OrderEntity extends Entity<OrderProps> {
   /**
    * Factory for NEW orders.
    * Initialises defaults and queues OrderPlacedEvent via this.apply().
-   * The event is NOT published here — the handler calls entity.commit() for that.
+   * The event is NOT published here — the handler calls events.from(entity).publish() for that.
    */
   static create(
     input: {
@@ -171,9 +171,9 @@ export class OrderEntity extends Entity<OrderProps> {
 
 ---
 
-## Child Entities (not AggregateRoot)
+## Child Entities (not aggregate roots)
 
-Child entities belong to an aggregate but are not AggregateRoot themselves. They are plain classes identified by a `UniqueEntityID`. They do not apply events — the parent aggregate applies events on their behalf.
+Child entities belong to an aggregate but are not aggregate roots themselves. They are plain classes identified by a `UniqueEntityID`. They do not apply events — the parent aggregate applies events on their behalf.
 
 ```typescript
 // domain/entities/order-item.entity.ts
@@ -282,7 +282,7 @@ describe('OrderEntity', () => {
   describe('confirm()', () => {
     it('should transition status to CONFIRMED and queue OrderConfirmedEvent', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.commit(); // clear creation event
+      order.getUncommittedEvents().forEach((event) => order.acknowledgeEvent(event)); // discard creation events in this fixture only
 
       order.confirm();
 
@@ -304,7 +304,7 @@ describe('OrderEntity', () => {
   describe('cancel()', () => {
     it('should cancel a pending order and touch updatedAt', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.commit();
+      order.getUncommittedEvents().forEach((event) => order.acknowledgeEvent(event));
 
       order.cancel('Customer request');
 

@@ -3,9 +3,8 @@
 Full template for modules that use `CqrsModule`. Handlers self-register via
 `@CommandHandler` / `@QueryHandler` — no TOKEN symbol needed for them.
 
-`EventPublisher` is injected only in the command handler. The use case (if any)
-is framework-agnostic and returns entities; the handler calls `mergeObjectContext`
-and `commit`.
+`EventDispatcher` is injected only in the command handler. The use case (if any)
+is framework-agnostic and returns entities; the handler publishes after persistence and the actual transaction commit.
 
 ---
 
@@ -70,14 +69,16 @@ export class Create<Context>Command extends Command<{ id: string }> {
 
 ## Command Handler
 
-`EventPublisher` is always injected here. The entity's domain events (set up via
+`EventDispatcher` is always injected here. The entity's domain events (set up via
 `entity.apply()` inside `Entity.create()`) are dispatched only after the handler
-calls `publisher.mergeObjectContext(entity)` + `entity.commit()`.
+calls `await events.from(entity).publish()`.
 
 ```typescript
 // application/commands/create-<context>.handler.ts
 import { Inject } from '@nestjs/common';
-import { CommandHandler, EventPublisher, ICommandHandler } from '@nestjs/cqrs';
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { EVENT_DISPATCHER_TOKEN } from '@/shared/events/event-publisher.port';
+import { EventDispatcher } from '@/shared/events/event-dispatcher';
 
 import type { <Context>Repository } from '../../domain/repositories/<context>.repository';
 import { <CONTEXT>_REPOSITORY_TOKEN } from '../../domain/repositories/<context>.repository';
@@ -93,7 +94,7 @@ export class Create<Context>Handler
   constructor(
     @Inject(<CONTEXT>_REPOSITORY_TOKEN)
     private readonly repository: <Context>Repository.Repository,
-    private readonly publisher: EventPublisher,
+    @Inject(EVENT_DISPATCHER_TOKEN) private readonly events: EventDispatcher,
   ) {}
 
   async execute(command: Create<Context>Command): Promise<Create<Context>Dto.Output> {
@@ -106,10 +107,8 @@ export class Create<Context>Handler
 
     await this.repository.insert(entity);
 
-    // mergeObjectContext wires the entity's EventBus connection
-    // commit() flushes all applied events to the EventBus
-    this.publisher.mergeObjectContext(entity);
-    entity.commit();
+    // Publish the queued snapshot and acknowledge each successful event.
+    await this.events.from(entity).publish(); // after persistence / actual transaction commit
 
     // Write commands return void or { id } — never the full aggregate
     return { id: entity.id };
@@ -119,12 +118,14 @@ export class Create<Context>Handler
 
 ---
 
-## Update Command Handler (merge + commit pattern)
+## Update Command Handler (persist + dispatch pattern)
 
 ```typescript
 // application/commands/update-<context>.handler.ts
 import { Inject, NotFoundException } from '@nestjs/common';
-import { CommandHandler, EventPublisher, ICommandHandler } from '@nestjs/cqrs';
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { EVENT_DISPATCHER_TOKEN } from '@/shared/events/event-publisher.port';
+import { EventDispatcher } from '@/shared/events/event-dispatcher';
 
 import type { <Context>Repository } from '../../domain/repositories/<context>.repository';
 import { <CONTEXT>_REPOSITORY_TOKEN } from '../../domain/repositories/<context>.repository';
@@ -137,7 +138,7 @@ export class Update<Context>Handler
   constructor(
     @Inject(<CONTEXT>_REPOSITORY_TOKEN)
     private readonly repository: <Context>Repository.Repository,
-    private readonly publisher: EventPublisher,
+    @Inject(EVENT_DISPATCHER_TOKEN) private readonly events: EventDispatcher,
   ) {}
 
   async execute(command: Update<Context>Command): Promise<void> {
@@ -151,8 +152,7 @@ export class Update<Context>Handler
 
     await this.repository.update(entity);
 
-    this.publisher.mergeObjectContext(entity);
-    entity.commit();
+    await this.events.from(entity).publish(); // after persistence / actual transaction commit
   }
 }
 ```
@@ -180,7 +180,7 @@ export class Get<Context>Query extends Query<Get<Context>Dto.Output> {
 
 ## Query Handler
 
-Query handlers do not use `EventPublisher`. They read from the repository and map to output.
+Query handlers do not use `EventDispatcher`. They read from the repository and map to output.
 
 ```typescript
 // application/queries/get-<context>.handler.ts
@@ -340,6 +340,8 @@ export class <Context>Controller {
 
 ```typescript
 // application/commands/__tests__/create-<context>.handler.spec.ts
+import { dispatch } from '@/shared/events/event-dispatcher';
+import { InMemoryEventPublisher } from '@/shared/events/in-memory-event-publisher';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Create<Context>Handler } from '../create-<context>.handler';
@@ -351,29 +353,38 @@ const mockRepository = {
   update: vi.fn(),
 };
 
-const mockPublisher = {
-  mergeObjectContext: vi.fn().mockImplementation((entity) => entity),
-};
+const publisher = new InMemoryEventPublisher(() => {
+  expect(mockRepository.insert).toHaveBeenCalledOnce();
+});
+const events = dispatch(publisher);
 
 describe('Create<Context>Handler', () => {
   let handler: Create<Context>Handler;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    publisher.publications.length = 0;
     handler = new Create<Context>Handler(
       mockRepository as any,
-      mockPublisher as any,
+      events,
     );
   });
 
-  it('creates entity, persists, and commits events', async () => {
+  it('creates entity, persists, and publishes events', async () => {
     const command = new Create<Context>Command('company-1', 'Test Item');
 
     const result = await handler.execute(command);
 
     expect(mockRepository.insert).toHaveBeenCalledOnce();
-    expect(mockPublisher.mergeObjectContext).toHaveBeenCalledOnce();
+    expect(publisher.publications).toHaveLength(1);
     expect(result.id).toBeDefined();
+  });
+
+  it('does not publish when persistence fails', async () => {
+    mockRepository.insert.mockRejectedValueOnce(new Error('database unavailable'));
+    await expect(handler.execute(new Create<Context>Command('company-1', 'Test Item')))
+      .rejects.toThrow('database unavailable');
+    expect(publisher.publications).toHaveLength(0);
   });
 });
 ```
@@ -444,11 +455,11 @@ describe('Get<Context>Handler', () => {
 
 - [ ] Command extends `Command<T>`, Query extends `Query<T>`.
 - [ ] Handler implements `ICommandHandler<Command, ReturnType>` with explicit return type.
-- [ ] `EventPublisher` injected only in command handlers, never in query handlers.
-- [ ] `publisher.mergeObjectContext(entity)` called before `entity.commit()`.
-- [ ] `entity.commit()` called after `repository.insert/update`.
+- [ ] `EventDispatcher` injected only in command handlers, never in query handlers.
+- [ ] Each queued event is acknowledged only after publisher success; failures retain the remaining queue.
+- [ ] `await events.from(entity).publish()` called after `repository.insert/update` and the actual transaction commit.
 - [ ] Write commands return `void` or `{ id: string }`, never the full aggregate.
-- [ ] Query handlers never mutate state, never use `EventPublisher`.
+- [ ] Query handlers never mutate state, never use `EventDispatcher`.
 - [ ] `companyId` verified on every query/mutation (multi-tenant enforcement).
 - [ ] Module includes `CqrsModule` in `imports`.
 - [ ] Module exports only repository PORT token, not handlers.

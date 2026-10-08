@@ -33,7 +33,7 @@ You are an Infrastructure Layer agent. You create infrastructure artifacts follo
 ## Critical Rules
 
 - **Repository is PURE persistence** — NO event dispatch, NO knowledge of events
-- Events are committed by the Handler via `entity.commit()`, NEVER by repository
+- Events are committed by the Handler via `await events.from(entity).publish()`, NEVER by repository
 - Module exports ONLY Port tokens — never use cases, never repositories
 - Adapters use `{ provide: TOKEN, useExisting: AdapterClass }`
 - Use `useFactory` + `inject` for use case/handler registration
@@ -69,3 +69,7 @@ After completion, report what was created:
 - Event handlers: file paths (if any)
 - Tests: file paths
 - Verification: lint + types clean; `nestjs-hexagonal-check` result (or "CLI not installed")
+
+## Dispatcher contract
+
+Follow the [fluent dispatcher reference](../skills/application/references/event-dispatcher.md). Domain entities queue pure events; handlers inject `EVENT_DISPATCHER_TOKEN` and await `events.from(entity).publish()` after the actual transaction commit. Repositories and use cases never publish. Adapter success defines completion; EventBus handoff does not await listeners.

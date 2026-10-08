@@ -6,7 +6,7 @@ argument-hint: Event and type (e.g., "OrderCreatedEvent broadcast", "cross-bc Or
 
 # Event Listeners
 
-Domain events emitted via `entity.commit()` flow through the NestJS CQRS `EventBus`. Listeners are `@EventsHandler` classes that react to these events. Multiple handlers for the same event run in parallel via `Promise.allSettled` — if one fails, others continue.
+Domain events emitted via `await events.from(entity).publish()` flow through the NestJS CQRS `EventBus`. Listeners are `@EventsHandler` classes that react to these events. EventBus publication confirms handoff to the bus; it does not await listener completion. Handle listener failures in their own infrastructure.
 
 This skill covers WHERE listeners live, WHAT they do, and WHEN you actually need one.
 
@@ -39,7 +39,7 @@ Do you need to react to a domain event?
 
 | Situation | Do this instead |
 |---|---|
-| Only 1 side effect, simple and synchronous | Put it in the command handler after `entity.commit()` |
+| Only 1 side effect, simple and synchronous | Put it in the command handler after `await events.from(entity).publish()` |
 | Side effect is part of the core business transaction | Keep it in the use case / handler — not a separate listener |
 | < 2 consumers for the event | Question whether you need the event at all |
 | Event payload identical to what listener would emit | Emit directly from handler, skip intermediate event |
@@ -442,3 +442,7 @@ describe('OrderCreatedProjectionHandler', () => {
 | `references/same-bc-listeners.md` | Projection updater, audit log, cache invalidation, counter update |
 | `references/cross-bc-listeners.md` | Event import rules, CommandBus dispatch, module wiring, circular dep avoidance |
 | `references/bridge-listeners.md` | WS broadcast, RabbitMQ publish, email notification, webhook POST |
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](../application/references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

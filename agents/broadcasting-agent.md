@@ -116,3 +116,7 @@ After completion, report:
 - Frontend: provider, hooks, event types, component integration example
 - Connection: which events flow from backend to frontend
 - Checker: `nestjs-hexagonal-check` result on the backend files (or "CLI not installed")
+
+## Dispatcher contract
+
+Follow the [fluent dispatcher reference](../skills/application/references/event-dispatcher.md). Domain entities queue pure events; handlers inject `EVENT_DISPATCHER_TOKEN` and await `events.from(entity).publish()` after the actual transaction commit. Repositories and use cases never publish. Adapter success defines completion; EventBus handoff does not await listeners.

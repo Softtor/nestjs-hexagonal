@@ -1,12 +1,12 @@
 ---
 name: domain
-description: Use when creating domain layer artifacts for a NestJS bounded context — entities (AggregateRoot), value objects, domain events, repository interfaces, domain services, validators, or data builders. Covers Hexagonal Architecture + DDD patterns with NestJS CQRS native event support.
+description: Use when creating domain layer artifacts for a NestJS bounded context — entities (pure TypeScript), value objects, domain events, repository interfaces, domain services, validators, or data builders. Covers Hexagonal Architecture + DDD with pure events and configurable dispatcher adapters.
 argument-hint: Artifact type or entity name (e.g., "entity Order", "vo OrderStatus", "event OrderCreated")
 ---
 
 # Domain Layer
 
-The domain layer contains the pure business logic of a bounded context. It has zero framework dependencies except `@nestjs/cqrs` for `AggregateRoot` (entity base class). No `@Injectable`, no `PrismaService`, no HTTP concerns.
+The domain layer contains the pure business logic of a bounded context. It has zero framework dependencies. No `@Injectable`, no `PrismaService`, no HTTP concerns.
 
 ---
 
@@ -57,7 +57,7 @@ Domain artifact needed?
 
 Full reference: `references/entity-patterns.md`
 
-An entity is identified by its `UniqueEntityID`, not by its value. It extends `AggregateRoot` from `@nestjs/cqrs` so that events flow through the NestJS `EventBus` once committed.
+An entity is identified by its `UniqueEntityID`, not by its value. It extends the pure TypeScript `Entity` base, which queues events for the handler to publish after persistence.
 
 **Two factory methods are mandatory:**
 
@@ -67,9 +67,9 @@ An entity is identified by its `UniqueEntityID`, not by its value. It extends `A
 **Event lifecycle** (every entity follows this):
 ```
 entity.apply(event)            // 1. records the event in memory
-publisher.mergeObjectContext(entity)  // 2. wires EventBus (in handler)
-await repo.save(entity)        // 3. persists
-entity.commit()                // 4. publishes events to EventBus
+await repo.save(entity)        // 2. persists
+await transactionCommit       // 3. wait for the actual transaction commit, if present
+await events.from(entity).publish() // 4. handler publishes through its adapter
 ```
 
 **Condensed template:**
@@ -311,26 +311,28 @@ See `references/repository-interface.md` for: extended SearchParams with custom 
 
 Full reference: `references/domain-event-patterns.md`
 
-Domain events capture **what happened** in the domain. They implement `IEvent` from `@nestjs/cqrs`.
+Domain events capture **what happened** in the domain. They are pure TypeScript and carry stable `eventName`, `aggregateId`, `eventId` and `occurredOn` metadata.
 
 **Naming:** `<Entity><PastTenseVerb>Event` (e.g., `OrderPlacedEvent`, `CustomerActivatedEvent`)
 
 ```typescript
 // domain/events/<name>-created.event.ts
-import { IEvent } from '@nestjs/cqrs';
+import { DomainEvent } from '@/shared/base-classes/domain-event';
 
-export class <Name>CreatedEvent implements IEvent {
+export class <Name>CreatedEvent extends DomainEvent {
   constructor(
     public readonly <name>Id: string,
     public readonly tenantId: string,
     // include all data handlers will need
-  ) {}
+  ) {
+    super('<context>.<name>.created', <name>Id);
+  }
 }
 ```
 
 Rules:
 - Events are applied via `entity.apply(event)` inside entity methods
-- The handler calls `publisher.mergeObjectContext(entity)` then `entity.commit()` to publish
+- The handler calls `await events.from(entity).publish()` after the actual transaction commit to publish
 - Event handlers use `@EventsHandler` + `IEventHandler` — never `@OnEvent` for new code
 - Include enough payload so handlers do not need to re-fetch the entity
 
@@ -491,14 +493,14 @@ See `references/domain-error-patterns.md` for: full error catalog, naming conven
 | `new PrismaClient()` inside an entity | Repositories handle persistence |
 | Calling another aggregate's repository | Use a domain service or application service |
 | Throwing HTTP exceptions (`NotFoundException`) | Throw domain errors; HTTP mapping is in `infrastructure/` |
-| `entity.addDomainEvent()` / `entity.pullDomainEvents()` | Use `entity.apply(event)` (NestJS CQRS native) |
+| `entity.addDomainEvent()` / `entity.pullDomainEvents()` | Use pure `entity.apply(event)` and handler dispatch |
 
 ### Event invariants
 
 - `create()` ALWAYS calls `this.apply(new XCreatedEvent(...))`
 - `restore()` NEVER emits events
 - Mutating methods call `this.touch()` then `this.apply(new XUpdatedEvent(...))`
-- The repository saves the entity; the CQRS handler commits events
+- The repository saves the entity; the CQRS handler publishes events
 
 ### VO invariants
 
@@ -551,7 +553,7 @@ describe('<Name>Entity', () => {
   describe('update()', () => {
     it('should update field and touch updatedAt', () => {
       const entity = <Name>Entity.create(<Name>DataBuilder());
-      entity.commit(); // clear creation event
+      entity.getUncommittedEvents().forEach((event) => entity.acknowledgeEvent(event)); // discard creation events in this fixture only
 
       entity.update('new-name');
 
@@ -584,3 +586,7 @@ describe('EmailVO', () => {
   });
 });
 ```
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](../application/references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

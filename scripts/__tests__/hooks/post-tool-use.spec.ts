@@ -1,9 +1,11 @@
 import '../helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readRulebookFile } from '../../lib/compose.ts';
 import type { FetchLike } from '../../lib/jev-client.ts';
 import { ADVISORY_BYTE_CAP, handler, MAIN_THREAD_AGENT_ID } from '../../hooks/post-tool-use.ts';
-import { APPLICATION_AGENT, context, DOMAIN_AGENT, jevFetch, makeProject, NEST_SERVICE, PLAIN_SERVICE, readLog, runHook, writeProjectFile } from './helpers.ts';
+import { APPLICATION_AGENT, PLUGIN_ROOT, context, DOMAIN_AGENT, jevFetch, makeProject, NEST_SERVICE, PLAIN_SERVICE, readLog, runHook, writeProjectFile } from './helpers.ts';
 
 interface ContextJson {
   hookSpecificOutput: { hookEventName: string; additionalContext: string };
@@ -23,6 +25,22 @@ function postInput(project: { dir: string }, relativePath: string, content: stri
     tool_input: { file_path: join(project.dir, relativePath), content },
     tool_response: { filePath: join(project.dir, relativePath), type: 'create' },
   };
+}
+
+
+// Explicit thresholds isolate calibrated hook behavior from the shipped calibration version.
+function calibratedContext(project: ReturnType<typeof makeProject>, env: Record<string, string | undefined>, fetchImpl: FetchLike) {
+  const pluginRoot = join(project.dataDir, 'calibrated-test-plugin');
+  const rulebookPath = join(PLUGIN_ROOT, 'rulebooks', 'hexagonal.rulebook.yaml');
+  const { rulebook } = readRulebookFile(rulebookPath);
+  mkdirSync(join(pluginRoot, 'rulebooks'), { recursive: true });
+  mkdirSync(join(pluginRoot, 'calibration', 'fitted'), { recursive: true });
+  writeFileSync(join(pluginRoot, 'rulebooks', 'hexagonal.rulebook.yaml'), readFileSync(rulebookPath, 'utf8'));
+  writeFileSync(join(pluginRoot, 'calibration', 'fitted', rulebook.model.pin + '.json'), JSON.stringify({
+    pin: rulebook.model.pin, rulebookVersion: rulebook.version, generatedAt: 'test-fixture',
+    rules: { 'hex/handler-no-business-rules': { advise: 0.7, ask: 0.85, uncertain: { lo: 0.35, hi: 0.65 } } },
+  }));
+  return { ...context(project, env, fetchImpl), pluginRoot };
 }
 
 const HANDLER_PATH = 'src/orders/application/create-order.handler.ts';
@@ -73,7 +91,7 @@ describe('post-tool-use hook', () => {
     writeProjectFile(project, HANDLER_PATH, HANDLER_SOURCE);
     const jev = jevFetch(0.9);
     const key = { CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY: 'sk-option-key' };
-    const run = await runHook('post-tool-use', handler, postInput(project, HANDLER_PATH, HANDLER_SOURCE, { id: 'a', type: APPLICATION_AGENT }), context(project, key, jev.fetchImpl));
+    const run = await runHook('post-tool-use', handler, postInput(project, HANDLER_PATH, HANDLER_SOURCE, { id: 'a', type: APPLICATION_AGENT }), calibratedContext(project, key, jev.fetchImpl));
     if (!isContextJson(run.json)) {
       throw new Error(`unexpected output ${run.stdout}`);
     }
@@ -95,7 +113,7 @@ describe('post-tool-use hook', () => {
   it('reduces an uncertain or uncalibrated answer to one short line', async () => {
     const project = makeProject();
     writeProjectFile(project, HANDLER_PATH, HANDLER_SOURCE);
-    const uncertain = await runHook('post-tool-use', handler, postInput(project, HANDLER_PATH, HANDLER_SOURCE, { id: 'a', type: APPLICATION_AGENT }), context(project, { TYPESAFE_API_KEY: 'sk-env' }, jevFetch(0.5).fetchImpl));
+    const uncertain = await runHook('post-tool-use', handler, postInput(project, HANDLER_PATH, HANDLER_SOURCE, { id: 'a', type: APPLICATION_AGENT }), calibratedContext(project, { TYPESAFE_API_KEY: 'sk-env' }, jevFetch(0.5).fetchImpl));
     if (!isContextJson(uncertain.json)) {
       throw new Error(`unexpected output ${uncertain.stdout}`);
     }
@@ -103,7 +121,7 @@ describe('post-tool-use hook', () => {
     expect(readLog(project)[0]?.semantic).toMatchObject({ uncertain: 1 });
     const otherSource = HANDLER_SOURCE.replace('CreateOrderHandler', 'CancelOrderHandler');
     writeProjectFile(project, HANDLER_PATH, otherSource);
-    const stale = await runHook('post-tool-use', handler, postInput(project, HANDLER_PATH, otherSource, { id: 'b', type: APPLICATION_AGENT }), context(project, { TYPESAFE_API_KEY: 'sk-env' }, jevFetch(0.9, 'jev-9.0.0').fetchImpl));
+    const stale = await runHook('post-tool-use', handler, postInput(project, HANDLER_PATH, otherSource, { id: 'b', type: APPLICATION_AGENT }), calibratedContext(project, { TYPESAFE_API_KEY: 'sk-env' }, jevFetch(0.9, 'jev-9.0.0').fetchImpl));
     if (!isContextJson(stale.json)) {
       throw new Error(`unexpected output ${stale.stdout}`);
     }

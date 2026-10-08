@@ -8,7 +8,7 @@ The key contract:
 - **UseCase** is framework-agnostic: no `@Injectable`, no `@Inject`, no `@nestjs/cqrs`.
   It receives dependencies through its constructor and **returns the entity**.
 - **Handler** owns all NestJS DI wiring, orchestrates cross-cutting concerns,
-  and is the sole owner of `EventPublisher` + `entity.commit()`.
+  and is the sole owner of `EventDispatcher` + `await events.from(entity).publish()`.
 
 ---
 
@@ -37,7 +37,7 @@ application/
 │   └── create-charge.usecase.ts        # framework-agnostic, returns entity
 └── commands/
     ├── create-charge.command.ts
-    └── create-charge.handler.ts        # orchestrator + EventPublisher
+    └── create-charge.handler.ts        # orchestrator + EventDispatcher
 ```
 
 ---
@@ -65,9 +65,8 @@ export class CreateChargeCommand extends Command<CreateChargeDtoOutput> {
 
 ## UseCase (framework-agnostic)
 
-The UseCase has **no NestJS imports** (except possibly an entity base class from
-`shared/domain`, which is framework-agnostic). It **returns the entity** so the
-handler can call `mergeObjectContext` + `commit`.
+The UseCase has **no NestJS imports**. Shared entity and event bases are pure TypeScript. It **returns the entity** so the
+handler can call `events.from(entity).publish()`.
 
 ```typescript
 // application/usecases/create-charge.usecase.ts
@@ -94,7 +93,7 @@ export namespace CreateChargeUseCase {
       private readonly logger: LoggerPort,
     ) {}
 
-    // Returns the entity — handler handles mergeObjectContext + commit
+    // Returns the entity — handler handles events.from(entity).publish()
     async execute(input: Input): Promise<TransactionEntity> {
       const fee = FeeBreakdownVO.fromConfig(input.items, input.feeConfig);
 
@@ -130,7 +129,9 @@ the use case, then handles event publication.
 ```typescript
 // application/commands/create-charge.handler.ts
 import { Inject, Logger } from '@nestjs/common';
-import { CommandBus, CommandHandler, EventPublisher, ICommandHandler, QueryBus } from '@nestjs/cqrs';
+import { CommandBus, CommandHandler, ICommandHandler, QueryBus } from '@nestjs/cqrs';
+import { EVENT_DISPATCHER_TOKEN } from '@/shared/events/event-publisher.port';
+import { EventDispatcher } from '@/shared/events/event-dispatcher';
 
 import type { TransactionRepository } from '../../domain/repositories/transaction.repository';
 import { TRANSACTION_REPOSITORY_TOKEN } from '../../domain/repositories/transaction.repository';
@@ -157,7 +158,7 @@ export class CreateChargeHandler
     private readonly customerPort: CustomerPort,
     @Inject(LOGGER_PORT_TOKEN)
     logger: LoggerPort,
-    private readonly publisher: EventPublisher,
+    @Inject(EVENT_DISPATCHER_TOKEN) private readonly events: EventDispatcher,
   ) {
     // Instantiate the framework-agnostic use case, passing its dependencies
     this.useCase = new CreateChargeUseCase.UseCase(transactionRepository, logger);
@@ -180,7 +181,7 @@ export class CreateChargeHandler
     const feeConfig = acquirerConfig.getFeeConfig(command.paymentMethod);
 
     // 2. Delegate business logic to framework-agnostic use case
-    //    UseCase returns entity so handler can commit events
+    //    UseCase returns entity so handler can publish events
     const entity = await this.useCase.execute({
       companyId: command.companyId,
       resolvedCustomerId,
@@ -191,8 +192,7 @@ export class CreateChargeHandler
     });
 
     // 3. Handler owns event publication — NEVER inside the use case
-    this.publisher.mergeObjectContext(entity);
-    entity.commit();
+    await this.events.from(entity).publish(); // after persistence / actual transaction commit
 
     this.logger.log(`CreateChargeCommand processed: ${entity.id}`);
     return { id: entity.id };
@@ -292,7 +292,7 @@ describe('CreateChargeUseCase', () => {
     expect(entity.companyId).toBe('company-1');
   });
 
-  it('returns entity (not a plain object) for handler to commit events', async () => {
+  it('returns entity (not a plain object) for handler to publish events', async () => {
     const entity = await useCase.execute({
       companyId: 'company-1',
       paymentMethod: 'pix',
@@ -302,7 +302,7 @@ describe('CreateChargeUseCase', () => {
     });
 
     // The returned value must be an entity instance, not a plain DTO
-    expect(entity).toHaveProperty('commit');
+    expect(entity).toHaveProperty('getUncommittedEvents');
   });
 });
 ```
@@ -311,6 +311,8 @@ describe('CreateChargeUseCase', () => {
 
 ```typescript
 // application/commands/__tests__/create-charge.handler.spec.ts
+import { dispatch } from '@/shared/events/event-dispatcher';
+import { InMemoryEventPublisher } from '@/shared/events/in-memory-event-publisher';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateChargeHandler } from '../create-charge.handler';
 import { CreateChargeCommand } from '../create-charge.command';
@@ -319,9 +321,10 @@ const mockQueryBus = { execute: vi.fn() };
 const mockRepository = { insert: vi.fn() };
 const mockCustomerPort = { findById: vi.fn() };
 const mockLogger = { log: vi.fn(), error: vi.fn(), debug: vi.fn() };
-const mockPublisher = {
-  mergeObjectContext: vi.fn().mockImplementation((entity) => entity),
-};
+const publisher = new InMemoryEventPublisher(() => {
+  expect(mockRepository.insert).toHaveBeenCalledOnce();
+});
+const events = dispatch(publisher);
 
 const acquirerConfig = {
   id: 'acq-1',
@@ -335,6 +338,7 @@ describe('CreateChargeHandler', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    publisher.publications.length = 0;
     mockQueryBus.execute.mockResolvedValue(acquirerConfig);
     mockCustomerPort.findById.mockResolvedValue({
       id: 'customer-1',
@@ -346,7 +350,7 @@ describe('CreateChargeHandler', () => {
       mockRepository as any,
       mockCustomerPort as any,
       mockLogger as any,
-      mockPublisher as any,
+      events,
     );
   });
 
@@ -362,7 +366,7 @@ describe('CreateChargeHandler', () => {
 
     expect(mockQueryBus.execute).toHaveBeenCalledOnce();
     expect(mockCustomerPort.findById).toHaveBeenCalledWith('customer-1');
-    expect(mockPublisher.mergeObjectContext).toHaveBeenCalledOnce();
+    expect(publisher.publications).toHaveLength(1);
     expect(result.id).toBeDefined();
   });
 
@@ -383,8 +387,8 @@ describe('CreateChargeHandler', () => {
 - [ ] UseCase has **no** `@Injectable`, `@Inject`, or `@nestjs/cqrs` imports.
 - [ ] UseCase returns the entity instance — not `{ id }` or a DTO.
 - [ ] Handler constructor instantiates the use case via `new UseCase(deps...)`.
-- [ ] `EventPublisher` is injected in the handler, not the use case.
-- [ ] `publisher.mergeObjectContext(entity)` + `entity.commit()` called in handler after use case returns.
+- [ ] `EventDispatcher` is injected in the handler, not the use case.
+- [ ] `await events.from(entity).publish()` called in handler after use case returns and the actual transaction commits.
 - [ ] Handler resolves all external dependencies before calling `useCase.execute()`.
 - [ ] UseCase unit test uses `new UseCase(mockRepo, mockLogger)` — no `Test.createTestingModule`.
 - [ ] Handler unit test mocks `QueryBus`, ports, and publisher.

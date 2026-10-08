@@ -5,7 +5,7 @@
 # are asked to Jev when TYPESAFE_API_KEY is set; runtime rules are still inert.
 $schema: nestjs-hexagonal/rulebook@1
 id: hexagonal
-version: 1.3.0
+version: 1.4.0
 extends: []
 model:
   provider: typesafe
@@ -25,7 +25,8 @@ rules:
     severity: FAIL
     rationale: >-
       The domain layer must compile without NestJS, Prisma or any adapter.
-      Only AggregateRoot and IEvent from @nestjs/cqrs are allowed.
+      Entities queue events locally through apply(); publication belongs to
+      the application dispatcher after persistence has committed.
     fix: >-
       Remove the import and the decorator. Inject dependencies through a port
       in the application layer; keep entities and value objects plain classes.
@@ -33,7 +34,6 @@ rules:
     check:
       kind: forbidden-import
       modules: ['@nestjs/*', '@prisma/client', 'prisma', '**/infrastructure/**']
-      allow: ['@nestjs/cqrs']
     tags: [purity]
 
   - id: hex/entity-unique-id
@@ -49,8 +49,9 @@ rules:
       (UniqueEntityID). Hand-rolled id fields break equality and event
       correlation.
     fix: >-
-      Declare the class as `extends Entity<Props>` (or AggregateRoot) and let
-      the base own the id; never model ids as custom value objects.
+      Declare the class as `extends Entity<Props>` and let the pure TypeScript
+      base own the id; never model ids as custom value objects. Legacy
+      AggregateRoot identity remains recognized during migration.
     source: review-subdomain D5; harness unique-entity-id-required
     check:
       kind: regex
@@ -195,7 +196,7 @@ rules:
       A long `execute()` usually hides business rules that belong to the
       aggregate (god handler smell). The budget counts the whole method,
       signature and braces included.
-    fix: Move rules into entity methods and keep the handler to load, act, save, commit.
+    fix: Move rules into entity methods and keep the handler to load, act, save, confirm the transaction, then publish through the dispatcher.
     source: architecture-reviewer god handler
     check:
       kind: line-count

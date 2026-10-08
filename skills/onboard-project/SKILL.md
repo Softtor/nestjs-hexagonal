@@ -45,7 +45,7 @@ id: <project-id>            # lowercase, becomes the namespace of the project's 
 version: 0.1.0
 extends:
   - id: hexagonal
-    version: 1.3.0
+    version: 1.4.0
     sha256: <from the stamp command>
 model:
   provider: typesafe
@@ -68,7 +68,7 @@ Before enabling it, read the README section "Disclosure": with a key, code slice
 ## 4. Pin the CLI in the project
 
 ```bash
-bun add -d github:Softtor/nestjs-hexagonal#v1.3.0
+bun add -d github:Softtor/nestjs-hexagonal#v1.4.0
 ```
 
 The hooks prefer `node_modules/.bin/nestjs-hexagonal-check` when it exists, so the version in the lockfile is the one that runs in hooks, in CI and on developers' machines. Bun installs the plugin's `bun.lock` dependencies (`yaml`, `zod`) hoisted; `bunx nestjs-hexagonal-check --help` must print the usage.

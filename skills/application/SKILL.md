@@ -197,7 +197,9 @@ export class Create<Context>Command extends Command<Create<Context>Dto.Output> {
 ```typescript
 // application/commands/create-<context>.handler.ts
 import { Inject } from '@nestjs/common';
-import { CommandHandler, EventPublisher, ICommandHandler } from '@nestjs/cqrs';
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { EVENT_DISPATCHER_TOKEN } from '@/shared/events/event-publisher.port';
+import { EventDispatcher } from '@/shared/events/event-dispatcher';
 
 import type { <Context>Repository } from '../../domain/repositories/<context>.repository';
 import { <CONTEXT>_REPOSITORY_TOKEN } from '../../domain/repositories/<context>.repository';
@@ -212,7 +214,7 @@ export class Create<Context>Handler
   constructor(
     @Inject(<CONTEXT>_REPOSITORY_TOKEN)
     private readonly repository: <Context>Repository.Repository,
-    private readonly publisher: EventPublisher,
+    @Inject(EVENT_DISPATCHER_TOKEN) private readonly events: EventDispatcher,
   ) {}
 
   async execute(command: Create<Context>Command): Promise<Create<Context>Dto.Output> {
@@ -224,9 +226,8 @@ export class Create<Context>Handler
 
     await this.repository.insert(entity);
 
-    // mergeObjectContext and commit happen in the HANDLER — never in the use case
-    this.publisher.mergeObjectContext(entity);
-    entity.commit(); // dispatches domain events via EventBus
+    // Publish queued events after the actual transaction commit.
+    await this.events.from(entity).publish(); // after persistence / actual transaction commit
 
     return { id: entity.id };
   }
@@ -235,8 +236,8 @@ export class Create<Context>Handler
 
 Key rules for command handlers:
 - Write commands return `void` or `{ id: string }` — never the full aggregate.
-- `EventPublisher` is injected ONLY in the handler, never in use cases.
-- `mergeObjectContext(entity)` + `entity.commit()` happen in the handler after persisting.
+- `EventDispatcher` is injected ONLY in the handler, never in use cases.
+- `await events.from(entity).publish()` happen in the handler after persistence and the actual transaction commit.
 - Entity calls `this.apply(event)` internally — that is framework-agnostic.
 
 ### Query
@@ -346,7 +347,7 @@ export class CreateInvoiceHandler
     private readonly customerPort: CustomerPort,
     @Inject(LOGGER_PORT_TOKEN)
     logger: LoggerPort,
-    private readonly publisher: EventPublisher,
+    @Inject(EVENT_DISPATCHER_TOKEN) private readonly events: EventDispatcher,
   ) {
     // Instantiate framework-agnostic use case here
     this.useCase = new CreateInvoiceUseCase.UseCase(invoiceRepository, logger);
@@ -368,9 +369,8 @@ export class CreateInvoiceHandler
       customer,
     });
 
-    // 4. Handler commits domain events (EventPublisher never enters the use case)
-    this.publisher.mergeObjectContext(entity);
-    entity.commit();
+    // 4. Handler commits domain events (EventDispatcher never enters the use case)
+    await this.events.from(entity).publish(); // after persistence / actual transaction commit
 
     return { id: entity.id };
   }
@@ -395,9 +395,9 @@ export namespace CreateInvoiceUseCase {
 ```
 
 Key rules for Pattern C:
-- UseCase returns the entity — handler owns `mergeObjectContext` + `commit`.
-- `EventPublisher` is injected ONLY in the handler.
-- UseCase has zero NestJS imports (except entity base class from shared/domain).
+- UseCase returns the entity — handler owns `events.from(entity).publish()`.
+- `EventDispatcher` is injected ONLY in the handler.
+- UseCase has zero NestJS imports; shared entity and event bases are pure TypeScript.
 - UseCase is testable without NestJS — just `new UseCase(mockRepo)`.
 
 Benefits:
@@ -551,7 +551,7 @@ Full template: `references/read-model-patterns.md`
 
 ## 10. Event Handlers
 
-React to domain events dispatched via `entity.commit()`. Use `@EventsHandler`, never `@OnEvent`, for new code.
+React to domain events dispatched via `await events.from(entity).publish()`. Use `@EventsHandler`, never `@OnEvent`, for new code.
 
 ```typescript
 // infrastructure/listeners/<context>-created.handler.ts
@@ -576,7 +576,7 @@ export class <Context>CreatedHandler implements IEventHandler<<Context>CreatedEv
 - Commands extend `Command<T>`, Queries extend `Query<T>` (NestJS CQRS native).
 - Handlers specify full return type: `ICommandHandler<Cmd, ReturnType>`.
 - Entity emits events via `this.apply(event)` — never `addDomainEvent()`.
-- Handler calls `publisher.mergeObjectContext(entity)` + `entity.commit()` — never `pullDomainEvents()`.
+- Handler calls `await events.from(entity).publish()` — never `pullDomainEvents()`.
 - Modules export only PORT tokens — never use cases, never Prisma repositories.
 - `useFactory` + `inject` for use cases in module providers — never `useClass`.
 - Ports are defined in the **consumer** module's `application/ports/`, not the provider's.
@@ -586,7 +586,7 @@ export class <Context>CreatedHandler implements IEventHandler<<Context>CreatedEv
 ## 12. Testing Checklist
 
 - [ ] UseCase unit test: mock repository, assert output shape.
-- [ ] Command handler test: mock repository + EventPublisher, assert `entity.commit()` called.
+- [ ] Command handler test: mock repository + EventDispatcher, assert publications occur only after persistence succeeds.
 - [ ] Query handler test: mock repository, assert output mapper applied.
 - [ ] Port test: mock adapter, assert interface contract.
 - [ ] Application service test: mock ports, test shared logic in isolation.
@@ -604,3 +604,7 @@ export class <Context>CreatedHandler implements IEventHandler<<Context>CreatedEv
 | `references/port-patterns.md` | Cross-module port contracts |
 | `references/dto-patterns.md` | DTO namespaces, inline, output mappers |
 | `references/read-model-patterns.md` | Redis R/W separation + projections |
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

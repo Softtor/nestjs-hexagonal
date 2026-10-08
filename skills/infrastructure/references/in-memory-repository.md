@@ -126,7 +126,10 @@ describe('Create<Context>UseCase', () => {
 
 ```typescript
 import { Test } from '@nestjs/testing';
-import { CqrsModule, EventPublisher } from '@nestjs/cqrs';
+import { CqrsModule } from '@nestjs/cqrs';
+import { dispatch } from '@/shared/events/event-dispatcher';
+import { EVENT_DISPATCHER_TOKEN } from '@/shared/events/event-publisher.port';
+import { InMemoryEventPublisher } from '@/shared/events/in-memory-event-publisher';
 import { <CONTEXT>_REPOSITORY } from '../../../domain/repositories/<context>.repository';
 import { <Context>InMemoryRepository } from '../../../infrastructure/database/in-memory/repositories/<context>-in-memory.repository';
 import { Create<Context>Handler } from '../create-<context>.handler';
@@ -140,6 +143,7 @@ describe('Create<Context>Handler', () => {
       imports: [CqrsModule],
       providers: [
         Create<Context>Handler,
+        { provide: EVENT_DISPATCHER_TOKEN, useFactory: () => dispatch(new InMemoryEventPublisher()) },
         {
           provide: <CONTEXT>_REPOSITORY,
           useClass: <Context>InMemoryRepository,
@@ -151,7 +155,7 @@ describe('Create<Context>Handler', () => {
     repo = module.get(<CONTEXT>_REPOSITORY);
   });
 
-  it('creates a <context> and commits events', async () => {
+  it('creates a <context> and publishes events', async () => {
     const result = await handler.execute(
       new Create<Context>Command('org-1', 'New Name'),
     );

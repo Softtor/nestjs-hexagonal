@@ -1,0 +1,136 @@
+import { defer, from, isObservable, lastValueFrom, type Observable } from 'rxjs';
+import { concatMap, endWith, finalize, ignoreElements, tap } from 'rxjs/operators';
+import type { EventPublication, EventPublisherPort, EventSource } from './event-publisher.port';
+
+type Options = { readonly eventId: string; readonly occurredAt: Date; readonly key?: string };
+type EventDetails = { eventName?: string; eventId?: string; occurredOn?: Date };
+const instanceOptions = new WeakMap<object, Options>();
+const draining = new WeakMap<EventSource, symbol>();
+
+function nonEmpty(value: string, field: string): string {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`${field} must not be empty`);
+  return value;
+}
+
+function timestamp(value: Date): Date {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) throw new Error('Invalid occurredAt');
+  return new Date(value.getTime());
+}
+
+function optionsFor(event?: object): Options {
+  if (event) {
+    const saved = instanceOptions.get(event);
+    if (saved) return saved;
+    const details = event as EventDetails;
+    const options = {
+      eventId: nonEmpty(details.eventId ?? crypto.randomUUID(), 'eventId'),
+      occurredAt: timestamp(details.occurredOn ?? new Date()),
+    };
+    instanceOptions.set(event, options);
+    return options;
+  }
+  return { eventId: crypto.randomUUID(), occurredAt: new Date() };
+}
+
+function instanceRequest(event: object): EventPublication {
+  const details = event as EventDetails;
+  const name = details.eventName ?? event.constructor.name;
+  if (name === 'Object' && !details.eventName) throw new Error('Plain events require eventName');
+  return { kind: 'instance', event, name: nonEmpty(name, 'event name'), ...optionsFor(event) };
+}
+
+/** Executes inside subscription, emits void only on successful completion. No retries. */
+function publishOne(publisher: EventPublisherPort, request: EventPublication): Observable<void> {
+  return defer(() => {
+    const publication = Object.freeze({ ...request, occurredAt: timestamp(request.occurredAt) });
+    const result = publisher.publish(publication);
+    return isObservable(result) ? result : from(Promise.resolve(result));
+  }).pipe(ignoreElements(), endWith(undefined));
+}
+
+export class EventPublicationBuilder {
+  constructor(private readonly publisher: EventPublisherPort, private readonly request: EventPublication) {}
+
+  keyedBy(key: string): EventPublicationBuilder {
+    return new EventPublicationBuilder(this.publisher, { ...this.request, key: nonEmpty(key, 'key') });
+  }
+
+  withEventId(eventId: string): EventPublicationBuilder {
+    return new EventPublicationBuilder(this.publisher, { ...this.request, eventId: nonEmpty(eventId, 'eventId') });
+  }
+
+  occurredAt(date: Date): EventPublicationBuilder {
+    return new EventPublicationBuilder(this.publisher, { ...this.request, occurredAt: timestamp(date) });
+  }
+
+  publish$(): Observable<void> { return publishOne(this.publisher, this.request); }
+  async publish(): Promise<void> { await lastValueFrom(this.publish$()); }
+}
+
+/** No publish method: a named event must first supply its catalog payload. */
+export class NamedEventDraft<Payload> {
+  constructor(private readonly publisher: EventPublisherPort, private readonly name: string, private readonly options: Options) {}
+
+  with(payload: Payload): EventPublicationBuilder {
+    return new EventPublicationBuilder(this.publisher, { kind: 'named', name: this.name, payload, ...this.options });
+  }
+
+  keyedBy(key: string): NamedEventDraft<Payload> {
+    return new NamedEventDraft(this.publisher, this.name, { ...this.options, key: nonEmpty(key, 'key') });
+  }
+
+  withEventId(eventId: string): NamedEventDraft<Payload> {
+    return new NamedEventDraft(this.publisher, this.name, { ...this.options, eventId: nonEmpty(eventId, 'eventId') });
+  }
+
+  occurredAt(date: Date): NamedEventDraft<Payload> {
+    return new NamedEventDraft(this.publisher, this.name, { ...this.options, occurredAt: timestamp(date) });
+  }
+}
+
+export class QueuedEventPublication {
+  constructor(private readonly publisher: EventPublisherPort, private readonly source: EventSource) {}
+
+  publish$(): Observable<void> {
+    return defer(() => {
+      if (draining.has(this.source)) throw new Error('Event source is already being published');
+      const lease = Symbol('event drain');
+      draining.set(this.source, lease);
+      const release = () => {
+        // A reentrant subscriber may already own a newer lease.
+        if (draining.get(this.source) === lease) draining.delete(this.source);
+      };
+      // Snapshot inside defer; new events stay queued for the next execution.
+      return defer(() => from(this.source.getUncommittedEvents())).pipe(
+        concatMap(event => defer(() => publishOne(this.publisher, instanceRequest(event))).pipe(
+          tap(() => this.source.acknowledgeEvent(event)),
+        )),
+        ignoreElements(),
+        // Release before terminal notifications so concatMap/catchError can drain again.
+        tap({ complete: release, error: release }),
+        endWith(undefined),
+        finalize(release),
+      );
+    });
+  }
+
+  async publish(): Promise<void> { await lastValueFrom(this.publish$()); }
+}
+
+export class EventDispatcher<Events extends object = Record<string, unknown>> {
+  constructor(private readonly publisher: EventPublisherPort) {}
+
+  event<Name extends Extract<keyof Events, string>>(name: Name): NamedEventDraft<Events[Name]>;
+  event(event: object): EventPublicationBuilder;
+  event(event: string | object): NamedEventDraft<unknown> | EventPublicationBuilder {
+    if (typeof event === 'string') return new NamedEventDraft(this.publisher, nonEmpty(event, 'event name'), optionsFor());
+    if (event === null || typeof event !== 'object') throw new Error('Event must be a name or instance');
+    return new EventPublicationBuilder(this.publisher, instanceRequest(event));
+  }
+
+  from(source: EventSource): QueuedEventPublication { return new QueuedEventPublication(this.publisher, source); }
+}
+
+export function dispatch<Events extends object = Record<string, unknown>>(publisher: EventPublisherPort): EventDispatcher<Events> {
+  return new EventDispatcher<Events>(publisher);
+}

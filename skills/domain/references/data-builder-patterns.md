@@ -191,7 +191,7 @@ describe('OrderEntity', () => {
     it('should queue OrderConfirmedEvent when pending', () => {
       // Arrange: build a pending order with all events cleared
       const order = OrderEntity.create(OrderDataBuilder());
-      order.commit(); // clear the OrderPlacedEvent from create()
+      order.getUncommittedEvents().forEach((event) => order.acknowledgeEvent(event)); // discard creation events in this fixture only
 
       // Act
       order.confirm();

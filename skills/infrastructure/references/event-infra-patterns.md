@@ -7,7 +7,7 @@ Event handlers react to domain events and perform side effects. They are part of
 - Use `@EventsHandler` + `IEventHandler` — never `@OnEvent` for new code.
 - Handlers must never throw — wrap in `try/catch` and log errors.
 - Handler failure must not affect the transaction that caused the event.
-- `handle()` is called after `entity.commit()` in the command handler.
+- `handle()` is called after `await events.from(entity).publish()` in the command handler.
 
 ## Basic Event Handler
 
@@ -197,10 +197,10 @@ describe('<Context>CreatedHandler', () => {
 
 ```
 1. entity.apply(new <Context>CreatedEvent(...))   // records the event in entity
-2. publisher.mergeObjectContext(entity)            // wires EventBus to entity
-3. await repository.save(entity)                  // persists to DB (no events yet)
-4. entity.commit()                                // publishes all pending events to EventBus
-5. @EventsHandler picks them up asynchronously
+2. await repository.save(entity)                 // pure persistence
+3. await transactionCommit                       // actual database commit, if present
+4. await events.from(entity).publish()             // adapter completion, then acknowledgement
+5. EventBus adapter hands instances to @EventsHandler listeners
 ```
 
-The repository never knows about events. The command handler owns the commit step.
+The repository never knows about events. The command handler owns publication after the actual transaction commit.

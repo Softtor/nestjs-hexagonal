@@ -20,8 +20,8 @@ Write side                          Read side
 CommandHandler                      QueryHandler
   → Entity.create()                   → Redis.get(key)
   → Repository.insert()               → if miss: Prisma.findById()
-  → publisher.mergeObjectContext()    → Redis.set(key, view)
-  → entity.commit()
+  → actual transaction commit       → Redis.set(key, view)
+  → await events.from(entity).publish()
       ↓
   @EventsHandler(EntityCreatedEvent)
     → Redis.set(key, view)
@@ -189,7 +189,7 @@ export class GetContextHandler
 
 ## 5. Projection Updater (Event-Driven)
 
-React to domain events dispatched via `entity.commit()` to keep Redis in sync.
+React to domain events dispatched via `await events.from(entity).publish()` to keep Redis in sync.
 Use `@EventsHandler`, never `@OnEvent` for new code.
 
 ```typescript

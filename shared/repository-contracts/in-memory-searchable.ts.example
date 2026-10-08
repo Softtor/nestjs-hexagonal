@@ -171,7 +171,7 @@ export abstract class InMemorySearchableRepository<E extends Entity, Filter = st
 //
 //   beforeEach(() => {
 //     repo = new InMemoryCustomerRepository();
-//     handler = new CreateCustomerHandler(repo, new EventPublisherMock());
+//     handler = new CreateCustomerHandler(repo, dispatch(new InMemoryEventPublisher()));
 //   });
 //
 //   it('persists the entity', async () => {

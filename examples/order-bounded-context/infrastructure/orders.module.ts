@@ -1,5 +1,8 @@
+import { EventDispatcher } from '@/shared/events/event-dispatcher';
+import { EVENT_PUBLISHER_TOKEN, EVENT_DISPATCHER_TOKEN, type EventPublisherPort } from '@/shared/events/event-publisher.port';
+import { EventBusEventPublisher } from '@/shared/infrastructure/event-bus-event-publisher';
 import { Module } from '@nestjs/common';
-import { CqrsModule } from '@nestjs/cqrs';
+import { CqrsModule, EventBus } from '@nestjs/cqrs';
 
 // Domain
 import { ORDER_REPOSITORY_TOKEN } from '../domain/repositories/order.repository';
@@ -40,6 +43,17 @@ const eventHandlers = [OrderCreatedBroadcastHandler, OrderPaidIntegrationHandler
   ],
   controllers: [OrdersController],
   providers: [
+    // Container chooses the publisher. Kafka/custom adapters implement the same port.
+    {
+      provide: EVENT_PUBLISHER_TOKEN,
+      useFactory: (bus: EventBus) => new EventBusEventPublisher(bus),
+      inject: [EventBus],
+    },
+    {
+      provide: EVENT_DISPATCHER_TOKEN,
+      useFactory: (publisher: EventPublisherPort) => new EventDispatcher(publisher),
+      inject: [EVENT_PUBLISHER_TOKEN],
+    },
     // Repository binding: interface token -> concrete Prisma implementation
     PrismaOrderRepository,
     {

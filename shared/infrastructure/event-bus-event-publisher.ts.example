@@ -1,0 +1,20 @@
+import type { EventBus } from '@nestjs/cqrs';
+import type { EventPublication, EventPublisherPort } from '../events/event-publisher.port';
+
+export type EventFactories = Readonly<Record<string, (payload: unknown) => object>>;
+
+export function resolveEvent(publication: EventPublication, factories: EventFactories): object {
+  if (publication.kind === 'instance') return publication.event;
+  const factory = Object.hasOwn(factories, publication.name) ? factories[publication.name] : undefined;
+  if (!factory) throw new Error(`No EventBus factory registered for ${publication.name}`);
+  return factory(publication.payload);
+}
+
+/** Handoff to EventBus only; default Nest listeners are NOT awaited. */
+export class EventBusEventPublisher implements EventPublisherPort {
+  constructor(private readonly bus: EventBus, private readonly factories: EventFactories = {}) {}
+
+  publish(publication: EventPublication): void {
+    this.bus.publish(resolveEvent(publication, this.factories));
+  }
+}

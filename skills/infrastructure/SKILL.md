@@ -316,7 +316,7 @@ See full template: `references/event-infra-patterns.md`
 ## Rules
 
 - Repository is PURE persistence — `save()`, `findById()`, `search()`, `delete()`. No event dispatch.
-- Events are committed by the **Handler** via `entity.commit()` after `repo.save()`.
+- Events are published by the **Handler** via `await events.from(entity).publish()` after `repo.save()` and the actual transaction commit.
 - Module exports ONLY port tokens — never use cases, never Prisma repository classes.
 - Adapters implement port interfaces with `{ provide: TOKEN, useExisting: Adapter }`.
 - `class-validator` is ONLY allowed in presentation request DTOs.
@@ -341,3 +341,7 @@ See full template: `references/event-infra-patterns.md`
 - [ ] Adapter registered: `{ provide: TOKEN, useExisting: Adapter }` + exported
 - [ ] Event handlers: `try/catch` with logger, never re-throw
 - [ ] Run `<runner> lint && <runner> check-types` before committing (`<runner>` from the lockfile, see "Package runner" in `nestjs-hexagonal:using-nestjs-hexagonal`)
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](../application/references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

@@ -17,12 +17,12 @@ Scoring:
 
 | Field | Value |
 |---|---|
-| Command | `grep -r "@nestjs/common" <BC_PATH>/domain/ --include="*.ts" -l` |
+| Command | `rg '@nestjs/' <BC_PATH>/domain/ -g '*.ts' -l` |
 | Pass | Zero files returned |
-| FAIL | Any file in `domain/` imports from `@nestjs/common` |
+| FAIL | Any file in `domain/` imports from `@nestjs/` |
 | Common violation | `@Injectable()` on a VO or domain service; `NotFoundException` thrown from an entity |
 | Fix | Remove the decorator; throw `InvalidArgumentError` or `NotFoundError` from `@/shared/domain-errors/` instead |
-| Exception | `@nestjs/cqrs` is allowed: `AggregateRoot`, `IEvent` |
+| Exception | No framework imports are allowed |
 
 ### D2 — No class-validator in value objects
 
@@ -59,7 +59,7 @@ Scoring:
 | Pass | Zero files returned |
 | FAIL | Entity calls `addDomainEvent()` or `pullDomainEvents()` |
 | Common violation | Legacy pattern from non-NestJS-CQRS implementations |
-| Fix | Replace with `this.apply(event)` in entity methods; handler calls `publisher.mergeObjectContext(entity)` + `entity.commit()` |
+| Fix | Replace with `this.apply(event)` in entity methods; handler calls `await events.from(entity).publish()` |
 
 ### D5 — Entity has create(), restore(), and private constructor
 
@@ -101,17 +101,17 @@ Scoring:
 
 ## Dimension 2 — Application Patterns (6 checkpoints)
 
-### A1 — EventPublisher only in CQRS handlers
+### A1 — EventDispatcher only in CQRS handlers
 
 **Source:** residual (agent)
 
 | Field | Value |
 |---|---|
-| Command | `grep -r "EventPublisher" <BC_PATH>/application/usecases/ --include="*.ts" -l` |
+| Command | `rg 'EventDispatcher|EVENT_DISPATCHER_TOKEN|dispatch\(' <BC_PATH>/application/usecases/ -g '*.ts' -l` |
 | Pass | Zero results |
-| FAIL | `EventPublisher` found in a use case file |
-| Common violation | UseCase injects EventPublisher and calls `entity.commit()` internally |
-| Fix | Move `publisher.mergeObjectContext(entity)` and `entity.commit()` to the command handler; use case returns the entity |
+| FAIL | `EventDispatcher` found in a use case file |
+| Common violation | UseCase injects EventDispatcher and calls `await events.from(entity).publish()` internally |
+| Fix | Move `await events.from(entity).publish()` to the command handler; use case returns the entity |
 
 ### A2 — No class-validator in application layer
 
@@ -149,17 +149,17 @@ Scoring:
 | Common violation | Handler returns the entity directly to avoid writing an output mapper |
 | Fix | Map to `{ id: entity.id }` in the handler; use a query to fetch full data |
 
-### A5 — commit() called in handlers, not in use cases
+### A5 — publish() called in handlers, not in use cases
 
 **Source:** residual (agent)
 
 | Field | Value |
 |---|---|
-| Command | `grep -r "\.commit()" <BC_PATH>/application/usecases/ --include="*.ts" -l` |
+| Command | `rg '\.publish(\$)?\(' <BC_PATH>/application/usecases/ -g '*.ts' -l` |
 | Pass | Zero results |
-| FAIL | `.commit()` found in a use case file |
-| Common violation | UseCase commits events to keep the handler thin |
-| Fix | Move `entity.commit()` to the handler, after `publisher.mergeObjectContext(entity)` |
+| FAIL | `.publish()` found in a use case file |
+| Common violation | UseCase publishes events to keep the handler thin |
+| Fix | Move `await events.from(entity).publish()` to the handler, after persistence and actual transaction commit |
 
 ### A6 — Ports have TOKEN symbols
 
@@ -195,11 +195,11 @@ Scoring:
 
 | Field | Value |
 |---|---|
-| Command | `grep -rE "\.commit\(\)|EventBus|EventPublisher|\.publish\(" <BC_PATH>/infrastructure/database/ --include="*.ts" -l` |
+| Command | `grep -rE "\.commit\(\)|EventBus|EventDispatcher|\.publish\(" <BC_PATH>/infrastructure/database/ --include="*.ts" -l` |
 | Pass | Zero results |
 | FAIL | Event dispatch found in a repository file |
 | Common violation | Repository calls `eventBus.publish(event)` after save |
-| Fix | Remove event dispatch from repository; handler owns commit via `entity.commit()` |
+| Fix | Remove event dispatch from repository; handler owns publication via `await events.from(entity).publish()` |
 
 ### I3 — Model mapper calls restore() not create()
 

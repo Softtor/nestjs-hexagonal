@@ -20,7 +20,7 @@ bunx nestjs-hexagonal-check prescan --files '<bc-path>/**/*.ts' --format text
 # or, inside the plugin repository: bun scripts/prescan.ts --files '<bc-path>/**/*.ts'
 ```
 
-The output lists every file grouped by layer with its kind (`entity`, `vo`, `event`, `repo-interface`, `use-case`, `handler`, `controller`, `dto`, `module`, `listener`, `adapter`, `test`, `other`), its line count and whether a spec sibling exists (`tests` / `no-tests`). `--format json` gives the same as data. If the CLI is not installed, fall back to `Glob` + `Grep` for the decorators (`@Module`, `@Controller`, `@CommandHandler`, `@QueryHandler`, `@EventsHandler`, `extends AggregateRoot`, `extends ValueObject`) and say so in the report.
+The output lists every file grouped by layer with its kind (`entity`, `vo`, `event`, `repo-interface`, `use-case`, `handler`, `controller`, `dto`, `module`, `listener`, `adapter`, `test`, `other`), its line count and whether a spec sibling exists (`tests` / `no-tests`). `--format json` gives the same as data. If the CLI is not installed, fall back to `Glob` + `Grep` for the decorators (`@Module`, `@Controller`, `@CommandHandler`, `@QueryHandler`, `@EventsHandler`, `extends Entity`, `extends ValueObject`) and say so in the report.
 
 ## Step 2 — Read only what the map does not answer
 

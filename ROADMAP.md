@@ -5,6 +5,8 @@ Pick an item, open or claim an issue, and follow [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Done recently
 
+- [x] Broker-neutral fluent dispatcher, pure entities/events, RxJS publication, NestJS adapters and copied-template/example tests (1.4.0)
+
 - [x] Pin agents to Claude Opus 5.5 / Claude Sonnet 5 (`claude-opus-5-5`, `claude-sonnet-5`)
 - [x] Align `create-subdomain` review phase with Opus 5.5 (was incorrectly Sonnet)
 - [x] Document contribution paths and good-first-issue tracks
@@ -26,10 +28,18 @@ Pick an item, open or claim an issue, and follow [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Persistence & adapters
 
+The following backlog complements the dispatcher and does not block 1.4.0. Prioritize contracts/conformance, then adapters/reactive interfaces, then streaming/benchmarks.
+
 | Track | Description | Issue |
 |---|---|---|
 | TypeORM repository skill | Same pure-persistence port, TypeORM mapper + in-memory twin | [#1](https://github.com/Softtor/nestjs-hexagonal/issues/1) |
-| Drizzle / MikroORM adapters | Keep domain untouched; swap infrastructure only | — |
+| Drizzle repository adapters | ORM-neutral semantics and infrastructure-only schema | [#21](https://github.com/Softtor/nestjs-hexagonal/issues/21) |
+| Repository contracts | Standardize absence/conflict and optional capabilities | [#19](https://github.com/Softtor/nestjs-hexagonal/issues/19) |
+| Prisma alignment | Align existing adapters with neutral contracts | [#22](https://github.com/Softtor/nestjs-hexagonal/issues/22) |
+| Repository conformance suite | Shared real-database adapter validation | [#20](https://github.com/Softtor/nestjs-hexagonal/issues/20) |
+| Optional reactive interfaces | Cold RxJS reads/writes while preserving Promise APIs | [#23](https://github.com/Softtor/nestjs-hexagonal/issues/23) |
+| Bounded streaming | Native streams or cursor batches per adapter | [#24](https://github.com/Softtor/nestjs-hexagonal/issues/24) |
+| Query/stream benchmarks | Reproducible measured gains and regressions | [#25](https://github.com/Softtor/nestjs-hexagonal/issues/25) |
 | Mongo / document mapper patterns | When aggregates map poorly to SQL | — |
 | Outbox pattern skill | Reliable event publish after `repo.save` | [#5](https://github.com/Softtor/nestjs-hexagonal/issues/5) |
 
@@ -84,5 +94,5 @@ Pick an item, open or claim an issue, and follow [CONTRIBUTING.md](CONTRIBUTING.
 
 - Generic event relay frameworks
 - Forcing CQRS on every read
-- NestJS imports in the domain layer (except `AggregateRoot` / `IEvent`)
+- NestJS imports in the domain layer
 - Use cases for trivial `findById` without RBAC

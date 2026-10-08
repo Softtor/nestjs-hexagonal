@@ -78,11 +78,11 @@ The dimensions below are the checks the report is organised by. For each check t
 
 Run the following checks against `<BC_PATH>/domain/`:
 
-**Check D1 — No NestJS common imports in domain:**
+**Check D1 — No NestJS imports in domain:**
 ```bash
-grep -r "@nestjs/common" <BC_PATH>/domain/ --include="*.ts" -l
+rg '@nestjs/' <BC_PATH>/domain/ -g '*.ts' -l
 ```
-FAIL if any files are returned. Exception: `@nestjs/cqrs` is allowed (for `AggregateRoot`, `IEvent`).
+FAIL if any files are returned. No framework exceptions in domain code.
 
 **Check D2 — No class-validator in VOs:**
 ```bash
@@ -130,11 +130,11 @@ WARNING if the directory is empty or does not exist.
 
 **Purpose:** Confirm the application layer follows the chosen pattern correctly and does not hold framework concerns.
 
-**Check A1 — EventPublisher not in use cases:**
+**Check A1 — EventDispatcher not in use cases:**
 ```bash
-grep -r "EventPublisher" <BC_PATH>/application/ --include="*.ts" -l
+rg 'EventDispatcher|EVENT_DISPATCHER_TOKEN|dispatch\(' <BC_PATH>/application/ -g '*.ts' -l
 ```
-FAIL if `EventPublisher` appears in `application/usecases/` or `application/dtos/`. It is allowed in `application/commands/` (Pattern B/C handlers).
+FAIL if `EventDispatcher` appears in `application/usecases/` or `application/dtos/`. It is allowed in `application/commands/` (Pattern B/C handlers).
 
 **Check A2 — No class-validator in application DTOs:**
 ```bash
@@ -157,11 +157,11 @@ Read each command handler in `<BC_PATH>/application/commands/`:
 - FAIL if return type is an entity class or a full output DTO with many fields
 - PASS if return type is `void`, `Promise<void>`, `{ id: string }`, or `Promise<{ id: string }>`
 
-**Check A5 — commit() called in handlers, not in use cases:**
+**Check A5 — publish() called in handlers, not in use cases:**
 ```bash
-grep -r "\.commit()" <BC_PATH>/application/usecases/ --include="*.ts" -l
+rg '\.publish(\$)?\(' <BC_PATH>/application/usecases/ -g '*.ts' -l
 ```
-FAIL if `.commit()` appears in use case files.
+FAIL if `.publish()` appears in use case files.
 
 **Check A6 — Ports defined in application/ports/ with TOKEN symbol:**
 
@@ -187,7 +187,7 @@ Read `<BC_PATH>/infrastructure/*.module.ts`:
 
 **Check I2 — Repository has no event dispatch:**
 ```bash
-grep -r "\.commit()\|EventBus\|EventPublisher\|publish(" <BC_PATH>/infrastructure/database/ --include="*.ts" -l
+grep -r "\.publish()\|EventBus\|EventDispatcher\|publish(" <BC_PATH>/infrastructure/database/ --include="*.ts" -l
 ```
 FAIL if any of these appear in repository files.
 
@@ -405,3 +405,7 @@ Overall: PASS / NEEDS WORK
 - If all items are PASS or WARNING: report the BC as architecture-compliant.
 
 Suggest specific fixes for each FAIL item: the rule's own `fix` text first, then the relevant layer skill (`nestjs-hexagonal:domain`, `nestjs-hexagonal:application`, etc.) for implementation guidance. A rule that keeps producing false positives on this project is a candidate for an override in `.claude/rulebook.yaml` (`disabled`, `severity`, `scope`), or for recalibration through `nestjs-hexagonal:jev-eval` when it is semantic.
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](../application/references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

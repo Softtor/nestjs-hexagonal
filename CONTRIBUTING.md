@@ -21,7 +21,7 @@ Thanks for helping grow nestjs-hexagonal — especially after the first communit
 ## Skill checklist
 
 - [ ] Triggers and `argument-hint` match real user phrases
-- [ ] Patterns respect: AggregateRoot + `apply`, pure repository, EventPublisher only in Handler
+- [ ] Patterns respect: pure Entity + `apply`, pure repository, EventDispatcher only in Handler
 - [ ] Module exports only port tokens
 - [ ] `class-validator` only in presentation request DTOs
 - [ ] Write ops return `void` or `{ id: string }`
@@ -69,3 +69,5 @@ claude --plugin-dir /path/to/nestjs-hexagonal
 ```
 
 Then invoke `nestjs-hexagonal:using-nestjs-hexagonal` and confirm routing still matches your change.
+
+For event changes, review the [dispatcher contract](skills/application/references/event-dispatcher.md): handler publication follows the actual transaction commit, successful entries alone are acknowledged, instance prototypes survive, named EventBus events have explicit factories, and cold Observable publishers complete before success.

@@ -1,0 +1,30 @@
+import type { EventPublication, EventPublisherPort } from '../events/event-publisher.port';
+
+export interface BrokerMessage {
+  readonly destination: string;
+  readonly key?: string;
+  readonly body: string;
+  readonly headers: { readonly eventId: string; readonly occurredAt: string };
+}
+
+/** Implement in infrastructure using Kafka producer acknowledgements or RabbitMQ confirms. */
+export interface BrokerTransport {
+  sendAndConfirm(message: BrokerMessage): Promise<void>;
+}
+
+/** Customize mapping for your topic/exchange/envelope. Confirmation is not consumer processing. */
+export class BrokerEventPublisher implements EventPublisherPort {
+  constructor(private readonly transport: BrokerTransport) {}
+
+  async publish(publication: EventPublication): Promise<void> {
+    const payload = publication.kind === 'named' ? publication.payload : publication.event;
+    const body = JSON.stringify(payload);
+    if (body === undefined) throw new Error('Event payload is not JSON serializable');
+    await this.transport.sendAndConfirm({
+      destination: publication.name,
+      key: publication.key,
+      body,
+      headers: { eventId: publication.eventId, occurredAt: publication.occurredAt.toISOString() },
+    });
+  }
+}

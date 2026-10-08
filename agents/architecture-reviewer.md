@@ -51,8 +51,8 @@ Produce a report with 3 sections. Every finding that comes from the rulebook cit
 Check against the review rubric, using the checker JSON for the checks it covers:
 
 1. **Domain Purity** — grep for `@nestjs`, `@Injectable`, `class-validator` in domain/
-   - Exception: `AggregateRoot` and `IEvent` from `@nestjs/cqrs` are allowed
-2. **Application Patterns** — verify pattern consistency (A/B/C), EventPublisher in handler only
+   - No framework exceptions in domain code
+2. **Application Patterns** — verify pattern consistency (A/B/C), EventDispatcher in handler only
 3. **Infrastructure Isolation** — module exports only Ports, repo is pure persistence
 4. **Presentation Concerns** — class-validator in request DTOs, Swagger, guards
 5. **Testing Coverage** — .spec.ts files exist, data builders, in-memory repos
@@ -142,3 +142,7 @@ Rulebook findings first, residual scans second:
 - Over-engineering findings should include the simpler alternative
 - If the BC is well-structured with no issues, say so clearly — don't invent problems
 - Focus on value: would a staff engineer approve this code?
+
+## Dispatcher contract
+
+Follow the [fluent dispatcher reference](../skills/application/references/event-dispatcher.md). Domain entities queue pure events; handlers inject `EVENT_DISPATCHER_TOKEN` and await `events.from(entity).publish()` after the actual transaction commit. Repositories and use cases never publish. Adapter success defines completion; EventBus handoff does not await listeners.
