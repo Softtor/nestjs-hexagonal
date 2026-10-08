@@ -1,0 +1,1 @@
+{"expected":"ok","note":"A pure TypeScript Entity enforces the cancellation transition and queues a DomainEvent locally using apply; the domain has no NestJS dependency or publication."}

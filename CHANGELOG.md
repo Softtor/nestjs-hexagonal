@@ -2,6 +2,27 @@
 
 All notable changes to this plugin. Versions follow `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, which CI keeps identical; a GitHub Release carries the same tag.
 
+## 1.4.0 — 2026-10-08
+
+### Added
+
+- Broker-neutral fluent dispatcher templates: `dispatch(publisher).event(name).with(payload)` or `.event(instance)`, with immutable builders, optional key, stable event ID/date, `publish(): Promise<void>` and cold `publish$(): Observable<void>`. Publishers may complete synchronously, through Promise or Observable; empty Observable completion succeeds, errors propagate, no retries are added.
+- `EventPublisherPort`, publisher/dispatcher DI tokens, in-memory publisher, EventBus class-routing adapter, legacy Nest EventPublisher compatibility adapter and a broker mapping/confirmation reference. Templates are copied into applications, not a new runtime dependency of the plugin.
+- Sequential `from(entity)` publication: snapshot on execution, acknowledge each successful event, stop and retain pending events on failure/cancellation, reject overlapping drains of the same entity.
+- Executable copied-template tests: TypeScript payload/sequence contracts, RxJS behavior, queue retention, NestJS DI and real class listeners, broker confirmation without a live broker, and the Order example Vitest suite. Tested with TypeScript 5.9.3, RxJS 7.8.2 and NestJS CQRS 11.0.3.
+
+### Changed
+
+- Pure TypeScript Entity and DomainEvent replace the preferred AggregateRoot/IEvent domain pattern. Entity.apply records events locally; handlers publish only after persistence and the actual transaction commit. Repositories never publish events.
+- Order handlers, events and container wiring, skills, agents, architecture review/diagnostics and migration guidance now use the dispatcher.
+- Rulebook 1.4.0 requires pure domain imports; pattern classification recognizes dispatcher-based handlers and retains legacy EventPublisher/commit recognition. Semantic questions are unchanged. Historical fitted thresholds are kept as historical data and abstain as uncalibrated for a mismatched rulebook; CI calibration produces current results rather than relabeling old ones.
+
+### Migration and limits
+
+- Updating the plugin does not rewrite copied application files. Copy the new Entity/DomainEvent/event templates, configure `EVENT_PUBLISHER_TOKEN` and `EVENT_DISPATCHER_TOKEN`, and replace handler mergeObjectContext/commit with `await events.from(entity).publish()` after transaction commit. DomainEvent now carries a stable eventId. See `skills/application/references/event-dispatcher.md`.
+- RxJS 7 is required by copied dispatcher templates. NestJS stays in infrastructure adapters; the plugin's runtime dependencies remain YAML/Zod. Existing applications can migrate incrementally using the compatibility adapter and legacy pattern recognition.
+- EventBus confirms handoff, not listener completion; broker confirmation does not imply consumer processing. Cancellation/failure can leave delivery uncertain, so consumers must tolerate duplicates on repetition. No outbox, persistent retries, automatic listener discovery or exactly-once guarantee is included. Performance gains are not assumed; the repository/RxJS/benchmark backlog remains separate.
+
 ## 1.3.2 — 2026-10-08
 
 ### Added

@@ -9,10 +9,10 @@ Compatible with GSD workflow.
 
 ## Architecture Rules (enforced by all skills and agents)
 
-1. **Entity extends AggregateRoot** from `@nestjs/cqrs` — uses `this.apply(event)` for domain events
+1. **Entity is pure TypeScript** — uses `this.apply(event)` for domain events
 2. **Repository is PURE persistence** — save, find, search, delete. NO event dispatch
-3. **EventPublisher lives in the Handler, NEVER in UseCase** — UseCase returns entity, Handler calls `publisher.mergeObjectContext(entity)` then `entity.commit()`
-4. **No NestJS imports in domain** — exception: `AggregateRoot` and `IEvent` from `@nestjs/cqrs`
+3. **EventDispatcher lives in the Handler, NEVER in UseCase** — UseCase returns entity, Handler calls `await events.from(entity).publish()` after the actual transaction commit
+4. **No NestJS imports in domain** — no exceptions
 5. **Module exports ONLY Port tokens** — never use cases or repositories
 6. **class-validator ONLY in presentation request DTOs** — never in domain or application
 7. **Write operations return void or `{ id: string }`** — CQRS strict
@@ -116,7 +116,7 @@ The `create-subdomain` workflow maps to GSD phases. Each agent dispatch = 1 GSD 
 ## Pattern Selection (Application Layer)
 
 - **Pattern A**: Plain UseCase + TOKEN — no CQRS bus
-- **Pattern B**: CQRS Command/Query — `Command<T>`, `EventPublisher`, `entity.commit()`
+- **Pattern B**: CQRS Command/Query — `Command<T>`, `EventDispatcher`, `await events.from(entity).publish()`
 - **Pattern C**: Handler as Orchestrator — Handler creates `new UseCase(deps)`
 - **No use case**: Simple `findById` without RBAC — repository directly in controller
 
@@ -132,3 +132,7 @@ Use `nestjs-hexagonal:gsd-installer` to configure a project's CLAUDE.md for GSD 
 ## Shared Examples
 
 The `shared/` directory contains `.ts.example` reference implementations for greenfield projects.
+
+## Event dispatcher
+
+Use the [dispatcher reference](skills/application/references/event-dispatcher.md) for the preferred flow. `Entity.apply()` queues events; handlers inject `EVENT_DISPATCHER_TOKEN` and publish after the actual transaction commit. Publishers use `EVENT_PUBLISHER_TOKEN`; factories construct the dispatcher. Domain code has no NestJS imports. Legacy NestJS event publishing belongs only in the infrastructure compatibility adapter.

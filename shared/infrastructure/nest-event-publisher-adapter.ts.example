@@ -1,0 +1,16 @@
+import { AggregateRoot, type EventPublisher } from '@nestjs/cqrs';
+import type { EventPublication, EventPublisherPort } from '../events/event-publisher.port';
+import { resolveEvent, type EventFactories } from './event-bus-event-publisher';
+
+class PublicationAggregate extends AggregateRoot {}
+
+/** Legacy Nest EventPublisher bridge. Nest dependencies stay in infrastructure. */
+export class NestEventPublisherAdapter implements EventPublisherPort {
+  constructor(private readonly publisher: EventPublisher, private readonly factories: EventFactories = {}) {}
+
+  publish(publication: EventPublication): void {
+    const aggregate = this.publisher.mergeObjectContext(new PublicationAggregate());
+    aggregate.apply(resolveEvent(publication, this.factories));
+    aggregate.commit();
+  }
+}

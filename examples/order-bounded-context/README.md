@@ -5,13 +5,13 @@ The domain is an e-commerce **Orders** context — placing orders, tracking stat
 
 ## What this example covers
 
-- Entity with domain events (`OrderEntity` extends `AggregateRoot`)
+- Entity with domain events (`OrderEntity` extends `Entity`)
 - Value object state machine (`OrderStatusVO` — five states, controlled transitions)
 - Composed value object (`MoneyVO` — amount + currency, add operation)
 - Domain event classes (`OrderCreatedEvent`, `OrderPaidEvent`, `OrderCancelledEvent`, `OrderItemAddedEvent`)
 - Domain errors with context (`OrderNotFoundError`, `InvalidOrderStatusTransitionError`)
 - Repository interface with typed filter (namespace pattern, `ORDER_REPOSITORY_TOKEN`)
-- **Pattern B** — CQRS Command/Query handlers with `EventPublisher`
+- **Pattern B** — CQRS Command/Query handlers with `EventDispatcher`
 - DTO namespaces (`CreateOrderDto.Input` / `.Output`)
 - Output mapper (entity → API DTO)
 - Cross-module port (`PaymentGatewayPort`)
@@ -56,7 +56,7 @@ order-bounded-context/
 │   │   └── order-output.mapper.ts        # Entity → DTO mapping
 │   ├── commands/
 │   │   ├── create-order.command.ts
-│   │   ├── create-order.handler.ts       # EventPublisher here, never in entity
+│   │   ├── create-order.handler.ts       # EventDispatcher here, never in entity
 │   │   ├── cancel-order.command.ts
 │   │   ├── cancel-order.handler.ts
 │   │   └── __tests__/
@@ -100,24 +100,23 @@ operations go through `CommandBus` / `QueryBus`. Handlers are self-registering v
 
 Choose Pattern B when:
 - The module already uses or will use CQRS
-- You need `EventPublisher` to dispatch domain events
+- You need `EventDispatcher` to dispatch domain events
 - You want commands and queries to be self-discoverable by NestJS
 
 Choose Pattern A (plain UseCase + TOKEN) when the module is simple and doesn't need event publishing.
 
 ## Key architectural decisions
 
-### 1. EventPublisher lives in the Handler, never in the Entity
+### 1. EventDispatcher lives in the Handler, never in the Entity
 
 The entity calls `this.apply(event)` internally — that records the event but does NOT publish it.
-Publishing requires `EventPublisher.mergeObjectContext(entity)` + `entity.commit()`, which
-are framework concerns and belong in the command handler:
+The application dispatcher publishes through the configured infrastructure adapter.
+Publication belongs in the command handler after persistence and transaction commit:
 
 ```typescript
 // In CreateOrderHandler.execute():
-this.publisher.mergeObjectContext(order);   // wires EventBus to the entity
-await this.repository.save(order);          // persist first
-order.commit();                             // then publish — listeners see persisted data
+await this.repository.save(order);
+await this.events.from(order).publish(); // after the actual transaction commit
 ```
 
 ### 2. Repository is PURE persistence
@@ -154,3 +153,11 @@ When building your own bounded context with the plugin:
 4. Run `nestjs-hexagonal:presentation` to scaffold the controller and request DTOs
 
 This example shows what the output of those skills looks like for a realistic domain.
+
+## Dispatcher migration (1.4.0)
+
+Copy the `.ts.example` templates from `shared/base-classes/`, `shared/events/` and the EventBus adapter from `shared/infrastructure/` into your application's `src/shared/` as `.ts` files. The copied dispatcher needs RxJS 7; infrastructure adapters use NestJS CQRS 11. The container selects the publisher via `EVENT_PUBLISHER_TOKEN` and supplies `EVENT_DISPATCHER_TOKEN` to handlers.
+
+The domain queues pure events with `apply()`. After saving and committing the transaction, a handler calls `await events.from(order).publish()`. Each successful event is acknowledged; failed or cancelled deliveries remain pending. EventBus handoff does not await listener completion. For durable coordination, use the separate outbox pattern.
+
+The plugin tests copy these actual templates and this example into a temporary application, type-check the fluent contracts, and run the example Vitest specs. Updating the plugin does not rewrite templates already copied by consumers.

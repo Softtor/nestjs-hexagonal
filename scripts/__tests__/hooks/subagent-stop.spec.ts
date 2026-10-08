@@ -2,12 +2,14 @@ import '../helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readRulebookFile } from '../../lib/compose.ts';
 import { emptySession } from '../../lib/session-store.ts';
 import { findAgentSession, handler as agentPostToolUse } from '../../hooks/agent-post-tool-use.ts';
 import { handler, MAX_BLOCKS, touchedFiles } from '../../hooks/subagent-stop.ts';
 import { handler as subagentStart } from '../../hooks/subagent-start.ts';
 import type { FetchLike } from '../../lib/jev-client.ts';
-import { APPLICATION_AGENT, context, DOMAIN_AGENT, jevFetch, makeProject, NEST_SERVICE, PLAIN_SERVICE, readLog, runHook, writeProjectFile, type Project } from './helpers.ts';
+import { APPLICATION_AGENT, PLUGIN_ROOT, context, DOMAIN_AGENT, jevFetch, makeProject, NEST_SERVICE, PLAIN_SERVICE, readLog, runHook, writeProjectFile, type Project } from './helpers.ts';
 
 interface BlockJson {
   decision: string;
@@ -36,6 +38,22 @@ function startSession(project: Project, agentId: string, agentType: string, head
 
 function headOf(project: Project): string {
   return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: project.dir, encoding: 'utf8' }).trim();
+}
+
+
+// Explicit thresholds isolate calibrated hook behavior from the shipped calibration version.
+function calibratedContext(project: ReturnType<typeof makeProject>, env: Record<string, string | undefined>, fetchImpl: FetchLike) {
+  const pluginRoot = join(project.dataDir, 'calibrated-test-plugin');
+  const rulebookPath = join(PLUGIN_ROOT, 'rulebooks', 'hexagonal.rulebook.yaml');
+  const { rulebook } = readRulebookFile(rulebookPath);
+  mkdirSync(join(pluginRoot, 'rulebooks'), { recursive: true });
+  mkdirSync(join(pluginRoot, 'calibration', 'fitted'), { recursive: true });
+  writeFileSync(join(pluginRoot, 'rulebooks', 'hexagonal.rulebook.yaml'), readFileSync(rulebookPath, 'utf8'));
+  writeFileSync(join(pluginRoot, 'calibration', 'fitted', rulebook.model.pin + '.json'), JSON.stringify({
+    pin: rulebook.model.pin, rulebookVersion: rulebook.version, generatedAt: 'test-fixture',
+    rules: { 'hex/handler-no-business-rules': { advise: 0.7, ask: 0.85, uncertain: { lo: 0.35, hi: 0.65 } } },
+  }));
+  return { ...context(project, env, fetchImpl), pluginRoot };
 }
 
 const BAD_PATH = 'src/orders/domain/order.service.ts';
@@ -140,7 +158,7 @@ describe('subagent-stop hook', () => {
     writeProjectFile(project, BAD_PATH, NEST_SERVICE);
     startSession(project, 'agent-2', APPLICATION_AGENT, null, [handlerPath, BAD_PATH]);
     const advise = jevFetch(0.9);
-    const blocking = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), context(project, { TYPESAFE_API_KEY: 'sk-env' }, advise.fetchImpl));
+    const blocking = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), calibratedContext(project, { TYPESAFE_API_KEY: 'sk-env' }, advise.fetchImpl));
     if (!isBlockJson(blocking.json)) {
       throw new Error(`unexpected output ${blocking.stdout}`);
     }
@@ -149,7 +167,7 @@ describe('subagent-stop hook', () => {
     expect(readLog(project).at(-1)?.semantic).toBeUndefined();
 
     writeProjectFile(project, BAD_PATH, PLAIN_SERVICE);
-    const clean = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), context(project, { TYPESAFE_API_KEY: 'sk-env' }, advise.fetchImpl));
+    const clean = await runHook('subagent-stop', handler, stopInput(project, 'agent-2', APPLICATION_AGENT), calibratedContext(project, { TYPESAFE_API_KEY: 'sk-env' }, advise.fetchImpl));
     expect(clean.stdout).toBe('');
     expect(advise.calls.length).toBeGreaterThan(0);
     const session = project.store.read('s', 'agent-2');

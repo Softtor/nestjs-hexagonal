@@ -1,0 +1,1 @@
+{"expected":"ok","note":"The handler loads the order, checks existence, delegates the transition and publishes queued events after repository persistence; it computes no business rule."}

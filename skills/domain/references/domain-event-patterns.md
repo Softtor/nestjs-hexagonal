@@ -4,19 +4,19 @@ Domain events capture **what happened** in the domain after a state change. They
 
 ## Core Principle
 
-`entity.apply(event)` queues the event inside `AggregateRoot`. The event is NOT published immediately. The command handler is responsible for calling `publisher.mergeObjectContext(entity)` to wire the EventBus, then `entity.commit()` to publish all queued events. The entity and repository never call `commit()`.
+`entity.apply(event)` queues the event inside `Entity`. The event is NOT published immediately. After persistence and the actual transaction commit, the command handler calls `await events.from(entity).publish()` to publish the queued snapshot through its configured adapter. The entity and repository never call `publish()`.
 
 ---
 
 ## Event Class Template
 
-Events implement `IEvent` from `@nestjs/cqrs`. Use a plain class with public readonly properties — no inheritance from a base class is required.
+Events extend the pure `DomainEvent` base or provide equivalent stable metadata with public readonly properties. No NestJS imports belong in the domain.
 
 ```typescript
 // domain/events/order-placed.event.ts
-import { IEvent } from '@nestjs/cqrs';
+import { DomainEvent } from '@/shared/base-classes/domain-event';
 
-export class OrderPlacedEvent implements IEvent {
+export class OrderPlacedEvent extends DomainEvent {
   constructor(
     /** ID of the aggregate that produced this event. */
     public readonly orderId: string,
@@ -26,7 +26,9 @@ export class OrderPlacedEvent implements IEvent {
     public readonly customerId: string,
     public readonly totalAmount: number,
     public readonly placedAt: Date,
-  ) {}
+  ) {
+    super('order.placed', orderId, placedAt);
+  }
 }
 ```
 
@@ -74,7 +76,11 @@ Include in the payload everything that downstream handlers will need. This avoid
 
 ```typescript
 // Good — handler gets all needed data from the event
-export class CustomerCreatedEvent implements IEvent {
+export class CustomerCreatedEvent {
+  readonly eventName = 'CustomerCreatedEvent';
+  readonly eventId = crypto.randomUUID();
+  readonly occurredOn = new Date();
+  get aggregateId(): string { return this.customerId; }
   constructor(
     public readonly customerId: string,
     public readonly tenantId: string,
@@ -86,7 +92,11 @@ export class CustomerCreatedEvent implements IEvent {
 }
 
 // Bad — handler must re-fetch the customer to know the email
-export class CustomerCreatedEvent implements IEvent {
+export class CustomerCreatedEvent {
+  readonly eventName = 'CustomerCreatedEvent';
+  readonly eventId = crypto.randomUUID();
+  readonly occurredOn = new Date();
+  get aggregateId(): string { return this.customerId; }
   constructor(public readonly customerId: string) {}
 }
 ```
@@ -202,7 +212,7 @@ describe('OrderEntity — domain events', () => {
 
   it('confirm() should queue OrderConfirmedEvent', () => {
     const order = OrderEntity.create(OrderDataBuilder());
-    order.commit(); // clear creation event
+    order.getUncommittedEvents().forEach((event) => order.acknowledgeEvent(event)); // discard creation events in this fixture only
 
     order.confirm();
 
@@ -226,10 +236,11 @@ describe('OrderEntity — domain events', () => {
 });
 ```
 
-Key methods on `AggregateRoot`:
-- `entity.getUncommittedEvents()` — read queued events without clearing
-- `entity.commit()` — publish events to EventBus and clear the queue
-- Use `entity.commit()` in tests when you want to reset the event queue between operations
+Key methods on `Entity`:
+- `entity.getUncommittedEvents()` — return a snapshot without clearing the queue
+- `entity.acknowledgeEvent(event)` — remove that entry after successful publication
+- `await events.from(entity).publish()` — publish a snapshot sequentially; stop on failure and retain that event and the remaining entries
+- In domain test fixtures only, acknowledge creation events explicitly to isolate later operations
 
 ---
 
@@ -239,12 +250,12 @@ Domain events and integration events serve different purposes and have different
 
 ### Domain Events — INTERNAL to the BC
 
-Domain events are produced by aggregates via `entity.apply()` and published to the in-process `EventBus` via `entity.commit()`. They are **private** to the bounded context that emits them.
+Domain events are produced by aggregates via `entity.apply()` and published to the in-process `EventBus` via `await events.from(entity).publish()`. They are **private** to the bounded context that emits them.
 
 ```
 OrderBC:
   OrderEntity.pay()          → applies OrderPaidEvent
-  command handler             → entity.commit() publishes to EventBus
+  command handler             → events.from(entity).publish() publishes to EventBus
   OrderPaidProjectionHandler ← same-BC listener (Redis read model)
   OrderPaidAuditHandler      ← same-BC listener (audit log)
 ```

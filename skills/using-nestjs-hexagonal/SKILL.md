@@ -15,7 +15,7 @@ This is a routing skill. When working in a NestJS project that follows hexagonal
 This plugin applies when ANY of these are true:
 - Project has `@nestjs/core` and `@nestjs/cqrs` in dependencies
 - Project structure has `domain/`, `application/`, `infrastructure/` layers
-- Files contain `AggregateRoot`, `@EventsHandler`, `@CommandHandler`, `@QueryHandler`
+- Files contain `Entity`, `@EventsHandler`, `@CommandHandler`, `@QueryHandler`
 - User mentions: entity, value object, bounded context, CQRS, hexagonal, DDD, aggregate
 - CLAUDE.md references `nestjs-hexagonal` skills
 
@@ -30,7 +30,7 @@ If detected, route ALL architectural tasks through this plugin's skills and agen
 | Task | Route to | Type |
 |------|----------|------|
 | Create new bounded context / module | `nestjs-hexagonal:create-subdomain` | Skill (orchestrator) |
-| Create entity (AggregateRoot) | `nestjs-hexagonal:domain-agent` | Agent (Opus 5.5) |
+| Create pure entity | `nestjs-hexagonal:domain-agent` | Agent (Opus 5.5) |
 | Create value object | `nestjs-hexagonal:domain` | Skill |
 | Create domain event | `nestjs-hexagonal:domain` | Skill |
 | Create repository interface | `nestjs-hexagonal:domain` | Skill |
@@ -136,7 +136,7 @@ With a project rulebook present, four hooks run around the plugin agents: `Subag
 
 ## Other harnesses (Codex, Cursor, OpenCode): run the CLI
 
-Skills, agents and hooks are Claude Code features. In any other harness the rulebook is still enforced by running the same CLI from the project: `bunx nestjs-hexagonal-check --diff <base> --classes static --strict` in a pre-commit or lint-staged step, `--format json` to feed a reviewer, `prescan` to map a module before editing it. The plugin ships as a dev dependency (`bun add -d github:Softtor/nestjs-hexagonal#v1.3.0`), so the binary and the rulebooks are versioned with the project.
+Skills, agents and hooks are Claude Code features. In any other harness the rulebook is still enforced by running the same CLI from the project: `bunx nestjs-hexagonal-check --diff <base> --classes static --strict` in a pre-commit or lint-staged step, `--format json` to feed a reviewer, `prescan` to map a module before editing it. The plugin ships as a dev dependency (`bun add -d github:Softtor/nestjs-hexagonal#v1.4.0`), so the binary and the rulebooks are versioned with the project.
 
 ---
 
@@ -144,9 +144,9 @@ Skills, agents and hooks are Claude Code features. In any other harness the rule
 
 These rules apply to ALL tasks routed through this plugin:
 
-1. **Entity extends AggregateRoot** — uses `this.apply(event)` to queue events
+1. **Entity is pure TypeScript** — uses `this.apply(event)` to queue events
 2. **Repository is PURE persistence** — no event dispatch, no domain logic
-3. **EventPublisher in Handler ONLY** — UseCase returns entity, Handler commits events
+3. **EventDispatcher in Handler ONLY** — UseCase returns entity, Handler publishes events
 4. **Module exports ONLY Port tokens** — never use cases, never repositories
 5. **class-validator ONLY in presentation** — never in domain or application
 6. **Write returns void or ID** — CQRS strict, no full objects on command side
@@ -203,10 +203,14 @@ If you catch yourself doing any of these, STOP and invoke the correct skill:
 | What you're about to do | Problem | Route to |
 |---|---|---|
 | Adding `@Injectable` to a domain class | Framework leak into domain | `nestjs-hexagonal:domain` |
-| Putting `EventPublisher` in a UseCase | UseCase must be framework-agnostic | `nestjs-hexagonal:application` |
+| Putting `EventDispatcher` in a UseCase | UseCase must be framework-agnostic | `nestjs-hexagonal:application` |
 | Exporting a repository from a module | Only Port tokens should be exported | `nestjs-hexagonal:infrastructure` |
 | Adding `class-validator` to a VO | Validation layers are separate | `nestjs-hexagonal:domain` |
 | Making repository dispatch events | Repository is pure persistence | `nestjs-hexagonal:infrastructure` |
 | Creating use case for simple findById | Over-engineering | Check architecture-reviewer criteria |
 | Importing a service from another BC | Use ports instead | `nestjs-hexagonal:application` (ports) |
 | Creating generic event relay | Over-engineering | `nestjs-hexagonal:event-listeners` |
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](../application/references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

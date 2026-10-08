@@ -1,23 +1,21 @@
-import { AggregateRoot } from '@nestjs/cqrs';
 import { UniqueEntityID } from '@/shared/base-classes/unique-entity-id';
 
-/**
- * Base class for all domain entities.
- *
- * Extends AggregateRoot from @nestjs/cqrs so that domain events dispatched
- * via `this.apply(event)` flow through the NestJS EventBus automatically once
- * the entity is committed.
- *
- * Event lifecycle:
- *   1. `entity.apply(new SomethingHappenedEvent(...))`  — records the event
- *   2. `publisher.mergeObjectContext(entity)`           — wires EventBus
- *   3. `await repo.save(entity)`                        — persists to DB
- *   4. `entity.commit()`                                — publishes all pending events
- *   5. `@EventsHandler(SomethingHappenedEvent)` picks them up
- *
- * The repository is PURE persistence — it never knows about events.
- */
-export abstract class Entity<Props extends object = object> extends AggregateRoot {
+/** Pure domain entity. apply() only queues; handlers dispatch after persistence/commit. */
+export abstract class Entity<Props extends object = object> {
+  private readonly pendingEvents: object[] = [];
+
+  /** Record only. No bus, publisher, auto-commit or infrastructure dependency. */
+  apply(event: object): void { this.pendingEvents.push(event); }
+
+  /** Snapshot prevents callers from mutating the internal queue. */
+  getUncommittedEvents(): readonly object[] { return [...this.pendingEvents]; }
+
+  /** Called by the dispatcher only after successful adapter completion. */
+  acknowledgeEvent(event: object): void {
+    const index = this.pendingEvents.indexOf(event);
+    if (index >= 0) this.pendingEvents.splice(index, 1);
+  }
+
   /** Internal unique identifier wrapping a UUID (and optional numeric surrogate). */
   public readonly _id: UniqueEntityID;
 
@@ -31,7 +29,6 @@ export abstract class Entity<Props extends object = object> extends AggregateRoo
    *                 When omitted a new UUID is generated.
    */
   protected constructor(props: Props, id?: string | { uuid: string; id?: number }) {
-    super();
     this.props = props;
     this._id = new UniqueEntityID(id);
   }
@@ -100,11 +97,11 @@ export abstract class Entity<Props extends object = object> extends AggregateRoo
   // ---------------------------------------------------------------------------
 
   /** Returns a plain object representation of the entity, including its id. */
-  toJSON(): Required<{ id: string } & Props> {
+  toJSON(): object {
     return {
       id: this._id.toString(),
       ...this.props,
-    } as Required<{ id: string } & Props>;
+    };
   }
 }
 
@@ -112,11 +109,10 @@ export abstract class Entity<Props extends object = object> extends AggregateRoo
 // Usage example
 // =============================================================================
 //
-// import { IEvent } from '@nestjs/cqrs';
 // import { Entity } from '@/shared/base-classes/entity';
 //
-// // 1. Define a domain event (must implement IEvent)
-// export class CustomerCreatedEvent implements IEvent {
+// // 1. Define a domain event
+// export class CustomerCreatedEvent {
 //   constructor(public readonly customerId: string) {}
 // }
 //
@@ -152,6 +148,5 @@ export abstract class Entity<Props extends object = object> extends AggregateRoo
 //
 // // 4. In the use case / command handler:
 // const customer = Customer.create({ name: 'Alice', email: 'alice@example.com' });
-// publisher.mergeObjectContext(customer);
 // await customerRepository.save(customer);
-// customer.commit(); // fires CustomerCreatedEvent into EventBus
+// await events.from(customer).publish(); // dispatcher invokes the configured adapter

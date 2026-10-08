@@ -42,7 +42,7 @@ export class CancelOrderHandler implements ICommandHandler<CancelOrderCommand> {
     if (order === null) throw new OrderNotFoundError(command.orderId);
     order.cancel(command.reason);              // the rule lives in the entity
     await this.orders.save(order);
-    this.publisher.mergeObjectContext(order).commit();
+    await this.events.from(order).publish();
   }
 }
 ```

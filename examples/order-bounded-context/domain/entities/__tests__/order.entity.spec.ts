@@ -47,7 +47,7 @@ describe('OrderEntity', () => {
     it('emits no events', () => {
       const props = OrderDataBuilder();
       const order = OrderEntity.create(props);
-      order.getUncommittedEvents(); // drain
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       const restored = OrderEntity.restore(order.props, order.id);
       expect(restored.getUncommittedEvents()).toHaveLength(0);
@@ -67,7 +67,7 @@ describe('OrderEntity', () => {
   describe('addItem()', () => {
     it('adds the item and emits OrderItemAddedEvent', () => {
       const order = OrderEntity.create(OrderDataBuilder({ items: [] }));
-      order.getUncommittedEvents(); // drain creation event
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       const newItem = OrderItemDataBuilder({ quantity: 3, unitPrice: 20 });
       order.addItem(newItem);
@@ -84,7 +84,7 @@ describe('OrderEntity', () => {
           currency: 'USD',
         }),
       );
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       order.addItem(OrderItemDataBuilder({ quantity: 2, unitPrice: 25 }));
       expect(order.total.amount).toBe(150);
@@ -92,9 +92,9 @@ describe('OrderEntity', () => {
 
     it('throws when order is not PENDING', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
       order.markAsPaid();
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       expect(() => order.addItem(OrderItemDataBuilder())).toThrow(
         InvalidOrderStatusTransitionError,
@@ -105,7 +105,7 @@ describe('OrderEntity', () => {
   describe('markAsPaid()', () => {
     it('transitions to PAID and emits OrderPaidEvent', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       order.markAsPaid();
 
@@ -117,9 +117,9 @@ describe('OrderEntity', () => {
 
     it('throws when order is already PAID', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
       order.markAsPaid();
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       expect(() => order.markAsPaid()).toThrow(InvalidOrderStatusTransitionError);
     });
@@ -128,7 +128,7 @@ describe('OrderEntity', () => {
   describe('cancel()', () => {
     it('cancels from PENDING and emits OrderCancelledEvent', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       order.cancel('Customer requested cancellation');
 
@@ -142,9 +142,9 @@ describe('OrderEntity', () => {
 
     it('cancels from PAID and emits OrderCancelledEvent', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
       order.markAsPaid();
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       order.cancel('Payment reversed');
 
@@ -156,9 +156,9 @@ describe('OrderEntity', () => {
 
     it('throws when cancelling an already cancelled order', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
       order.cancel('First cancellation');
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
 
       expect(() => order.cancel('Second cancellation')).toThrow(
         InvalidOrderStatusTransitionError,
@@ -167,7 +167,7 @@ describe('OrderEntity', () => {
 
     it('throws when cancelling a SHIPPED order', () => {
       const order = OrderEntity.create(OrderDataBuilder());
-      order.getUncommittedEvents();
+      order.getUncommittedEvents().forEach(event => order.acknowledgeEvent(event)); // acknowledge previous test events
       order.markAsPaid();
       // Force status to SHIPPED by restoring with that status
       const shippedOrder = OrderEntity.restore(

@@ -1,84 +1,20 @@
-import { IEvent } from '@nestjs/cqrs';
+/** Pure domain event with stable identity and timestamp, including on retry. */
+export abstract class DomainEvent {
+  readonly eventName: string;
+  readonly aggregateId: string;
+  readonly occurredOn: Date;
+  readonly eventId: string;
 
-/**
- * Base class for all domain events.
- *
- * Implements `IEvent` from @nestjs/cqrs so events can be dispatched via
- * `AggregateRoot.apply()` and handled by `@EventsHandler` classes.
- *
- * Naming convention: past tense + "Event" suffix
- *   CustomerCreatedEvent, OrderShippedEvent, PaymentRefundedEvent
- *
- * Event flow:
- *   entity.apply(event)
- *     → publisher.mergeObjectContext(entity)
- *     → repo.save(entity)
- *     → entity.commit()
- *     → EventBus → @EventsHandler picks it up
- */
-export abstract class DomainEvent implements IEvent {
-  /** UUID of the aggregate that produced this event. */
-  public readonly aggregateId: string;
-
-  /** ISO timestamp of when the event occurred. */
-  public readonly occurredOn: Date;
-
-  /**
-   * Discriminator string for logging and serialization.
-   * Convention: `"<BoundedContext>.<EntityName>.<EventName>"`
-   * Example: `"customers.Customer.CustomerCreated"`
-   */
-  public readonly eventName: string;
-
-  /**
-   * @param eventName   - Discriminator string (see naming convention above)
-   * @param aggregateId - UUID of the aggregate root that emitted this event
-   * @param occurredOn  - Timestamp; defaults to now
-   */
-  protected constructor(
-    eventName: string,
-    aggregateId: string,
-    occurredOn?: Date,
-  ) {
+  protected constructor(eventName: string, aggregateId: string, occurredOn: Date = new Date(), eventId: string = crypto.randomUUID()) {
     this.eventName = eventName;
     this.aggregateId = aggregateId;
-    this.occurredOn = occurredOn ?? new Date();
+    this.occurredOn = new Date(occurredOn.getTime());
+    this.eventId = eventId;
   }
 }
 
-// =============================================================================
-// Usage examples
-// =============================================================================
-//
-// import { IEventHandler, EventsHandler } from '@nestjs/cqrs';
-// import { DomainEvent } from '@/shared/base-classes/domain-event';
-//
-// // 1. Define a concrete event
-// export class CustomerCreatedEvent extends DomainEvent {
-//   constructor(
-//     public readonly customerId: string,
-//     public readonly email: string,
-//   ) {
-//     super('customers.Customer.CustomerCreated', customerId);
-//   }
-// }
-//
-// // 2. Apply it inside the entity
-// export class Customer extends Entity<CustomerProps> {
-//   static create(props: CustomerProps): Customer {
-//     const customer = new Customer(props);
-//     customer.apply(new CustomerCreatedEvent(customer.id, props.email));
-//     return customer;
-//   }
-// }
-//
-// // 3. Handle it with @EventsHandler (side-effects only — no business logic)
-// @EventsHandler(CustomerCreatedEvent)
-// export class CustomerCreatedHandler implements IEventHandler<CustomerCreatedEvent> {
-//   async handle(event: CustomerCreatedEvent): Promise<void> {
-//     // Send welcome email, update read model, publish integration event, etc.
-//   }
-// }
-//
-// // 4. Wire the handler in the module providers array:
-// //   providers: [CustomerCreatedHandler]
+// Entity.create(): entity.apply(new CustomerCreatedEvent(entity.id, props.email));
+// Entity.restore(): reconstruct state, never apply creation events.
+// Handler: await repository.save(entity); await events.from(entity).publish();
+// With a transaction: publish only after the transaction has really committed.
+// EventBus adapter preserves class instances for @EventsHandler listeners.

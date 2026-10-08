@@ -49,7 +49,7 @@ jobs:
           fi
 
       - name: Type-check scripts
-        run: bunx --package typescript@5.9.3 tsc -p tsconfig.json
+        run: bun run check-types
 
       - name: Unit tests (no network)
         run: bun test ./scripts ./calibration/__tests__

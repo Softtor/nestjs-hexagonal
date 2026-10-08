@@ -1,0 +1,13 @@
+import type { EventPublication, EventPublisherPort } from './event-publisher.port';
+
+/** Fake publisher for unit tests. Failure is supplied by the test, not retried. */
+export class InMemoryEventPublisher implements EventPublisherPort {
+  readonly publications: EventPublication[] = [];
+
+  constructor(private readonly beforePublish?: (publication: EventPublication) => void | Promise<void>) {}
+
+  async publish(publication: EventPublication): Promise<void> {
+    await this.beforePublish?.(publication);
+    this.publications.push(publication);
+  }
+}

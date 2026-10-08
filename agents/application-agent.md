@@ -25,14 +25,14 @@ You are an Application Layer agent. You create application layer artifacts follo
 1. Select the right pattern (A: plain UseCase, B: CQRS Command/Query, C: Handler as Orchestrator)
 2. Create DTOs (namespace pattern: `<Action><Context>Dto.Input/Output`)
 3. Create use cases (framework-agnostic, NO NestJS imports)
-4. Create CQRS handlers (NestJS-aware, EventPublisher lives HERE)
+4. Create CQRS handlers (NestJS-aware, EventDispatcher lives HERE)
 5. Create ports for cross-module dependencies
 6. Write tests FIRST (TDD)
 
 ## Critical Rules
 
-- **EventPublisher lives in the Handler, NEVER in UseCase**
-- UseCase returns the entity to the Handler — Handler calls `publisher.mergeObjectContext(entity)` then `entity.commit()`
+- **EventDispatcher lives in the Handler, NEVER in UseCase**
+- UseCase returns the entity to the Handler — Handler calls `await events.from(entity).publish()` after the actual transaction commit
 - UseCase has ZERO knowledge of event infrastructure
 - No `@Injectable` on use cases — only on CQRS handlers
 - Write operations return `void` or `{ id: string }` — NEVER the full object
@@ -73,3 +73,7 @@ After completion, report what was created:
 - Ports: file paths (if any)
 - Tests: file paths, all passing
 - Checker: `nestjs-hexagonal-check` result on the created files (or "CLI not installed")
+
+## Dispatcher contract
+
+Follow the [fluent dispatcher reference](../skills/application/references/event-dispatcher.md). Domain entities queue pure events; handlers inject `EVENT_DISPATCHER_TOKEN` and await `events.from(entity).publish()` after the actual transaction commit. Repositories and use cases never publish. Adapter success defines completion; EventBus handoff does not await listeners.

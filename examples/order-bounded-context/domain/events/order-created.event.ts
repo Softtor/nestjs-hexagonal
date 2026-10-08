@@ -1,13 +1,13 @@
-import { IEvent } from '@nestjs/cqrs';
+import { DomainEvent } from '@/shared/base-classes/domain-event';
 
-export class OrderCreatedEvent implements IEvent {
+export class OrderCreatedEvent extends DomainEvent {
   constructor(
-    public readonly aggregateId: string,
+    aggregateId: string,
     public readonly organizationId: string,
     public readonly customerId: string,
     public readonly total: number,
     public readonly currency: string,
     public readonly itemCount: number,
-    public readonly occurredOn: Date = new Date(),
-  ) {}
+    occurredOn: Date = new Date(),
+  ) { super('order.created', aggregateId, occurredOn); }
 }

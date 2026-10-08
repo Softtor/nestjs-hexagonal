@@ -1,5 +1,7 @@
+import type { EventDispatcher } from '@/shared/events/event-dispatcher';
+import { EVENT_DISPATCHER_TOKEN } from '@/shared/events/event-publisher.port';
 import { Inject } from '@nestjs/common';
-import { CommandHandler, EventPublisher, ICommandHandler } from '@nestjs/cqrs';
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { OrderEntity } from '../../domain/entities/order.entity';
 import {
   ORDER_REPOSITORY_TOKEN,
@@ -15,7 +17,8 @@ export class CreateOrderHandler
   constructor(
     @Inject(ORDER_REPOSITORY_TOKEN)
     private readonly repository: OrderRepository.Repository,
-    private readonly publisher: EventPublisher,
+    @Inject(EVENT_DISPATCHER_TOKEN)
+    private readonly events: EventDispatcher,
   ) {}
 
   async execute(command: CreateOrderCommand): Promise<CreateOrderDto.Output> {
@@ -28,11 +31,8 @@ export class CreateOrderHandler
       notes: command.notes,
     });
 
-    // mergeObjectContext wires the entity's EventBus before we persist.
-    // commit() must be called AFTER save so that listeners see persisted data.
-    this.publisher.mergeObjectContext(order);
     await this.repository.save(order);
-    order.commit();
+    await this.events.from(order).publish();
 
     return { id: order.id };
   }

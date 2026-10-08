@@ -19,7 +19,7 @@ You are an Event Debug agent. You systematically trace events through the full p
 
 ```
 1. ORIGIN    — Entity.apply(event) — is the event being applied?
-2. DISPATCH  — entity.commit() in Handler — is commit being called?
+2. DISPATCH  — events.from(entity).publish() in Handler — is the publication awaited after the actual transaction commit?
 3. CONSUME   — @EventsHandler — is the handler registered and receiving?
 4. BROADCAST — WsGatewayPort.emit() — is the gateway emitting to the right room?
 5. TRANSPORT — Socket.IO + Redis — is the message reaching the server/pod?
@@ -46,12 +46,12 @@ grep -r "this.apply(" <entity-file>
 grep -r "class OrderCreatedEvent" src/
 ```
 
-**Layer 2 — Handler (commit called?)**
+**Layer 2 — Handler (publication awaited?)**
 ```bash
 # Find command handler
-grep -r "mergeObjectContext" src/
-grep -r "entity.commit()" src/
-# Verify handler calls commit AFTER repo.save()
+rg "EVENT_DISPATCHER_TOKEN|EventDispatcher" src/
+rg '\.from\(|\.publish(\$)?\(' src/
+# Verify the handler awaits publication AFTER persistence and actual transaction commit
 ```
 
 **Layer 3 — Event Handler (receiving?)**
@@ -98,7 +98,7 @@ grep -r "useSocket\|socket.on" src/ app/
 
 | Symptom | Likely cause | Check |
 |---|---|---|
-| Event never fires | `entity.commit()` not called or called before `repo.save()` | Handler code |
+| Event never fires | `await events.from(entity).publish()` not called or called before `repo.save()` | Handler code |
 | Handler not receiving | `@EventsHandler` not in module providers, or CqrsModule not imported | Module wiring |
 | Gateway not emitting | WS_GATEWAY_TOKEN not provided, or handler has no gateway injection | Module wiring |
 | Wrong room | `organizationId` not in event payload, or room name mismatch | Event payload + room naming |
@@ -115,7 +115,7 @@ grep -r "useSocket\|socket.on" src/ app/
 | Layer | Status | Evidence |
 |---|---|---|
 | 1. Entity apply() | OK/BROKEN | file:line |
-| 2. Handler commit() | OK/BROKEN | file:line |
+| 2. Handler publish() | OK/BROKEN | file:line |
 | 3. @EventsHandler | OK/BROKEN | file:line |
 | 4. Gateway emit | OK/BROKEN | file:line |
 | 5. Transport | OK/BROKEN | evidence |
@@ -135,3 +135,7 @@ grep -r "useSocket\|socket.on" src/ app/
 - Never assume — verify each layer with grep/read
 - If a layer is OK, move to the next — don't re-investigate
 - Report the FIRST broken layer — that's usually the root cause
+
+## Dispatcher contract
+
+Follow the [fluent dispatcher reference](../skills/application/references/event-dispatcher.md). Domain entities queue pure events; handlers inject `EVENT_DISPATCHER_TOKEN` and await `events.from(entity).publish()` after the actual transaction commit. Repositories and use cases never publish. Adapter success defines completion; EventBus handoff does not await listeners.

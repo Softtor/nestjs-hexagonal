@@ -14,7 +14,7 @@ Broadcasts domain events to connected frontend clients via Socket.IO. Simple pat
 
 ```
 Entity.apply(event)           <- domain (queued)
-  -> entity.commit()          <- handler (dispatch via EventBus)
+  -> events.from(entity).publish()          <- handler (dispatch via EventBus)
     -> @EventsHandler         <- bridge handler
       -> (optional) repo.findById() to enrich payload
       -> gateway.emitToOrganization(orgId, event, data)
@@ -174,3 +174,7 @@ useSocket<OrderCreatedPayload>('order:created', (data) => {
 | `references/gateway-patterns.md` | Full gateway + Redis adapter + JWT handshake + rooms |
 | `references/ws-gateway-port.md` | Port interface + adapter + mock for testing |
 | `references/frontend-consumption.md` | Client Socket.IO + reconnection + React hooks |
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](../application/references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

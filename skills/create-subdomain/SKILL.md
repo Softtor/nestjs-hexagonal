@@ -199,7 +199,7 @@ When used within GSD, each phase can be a separate GSD task tracked in the plan.
 | Anti-pattern | Correction |
 |---|---|
 | Use case for simple `findById` without RBAC | Repository directly in controller |
-| `EventPublisher` in UseCase | Only in the CQRS Handler |
+| `EventDispatcher` in UseCase | Only in the CQRS Handler |
 | Exporting repositories from module | Export only Port token Symbols |
 | `class-validator` in domain VOs | Manual `validate()` with `InvalidArgumentError` |
 | Repository dispatching events | Repository is pure persistence |
@@ -220,3 +220,7 @@ When used within GSD, each phase can be a separate GSD task tracked in the plan.
 | `references/tdd-workflow.md` | Test templates and TDD sequence per layer |
 | `references/checklist.md` | 30+ item delivery checklist grouped by layer |
 | `references/bc-organization.md` | When and how to split a BC into sub-modules |
+
+## Event dispatcher reference
+
+See [Fluent event dispatcher](../application/references/event-dispatcher.md) for typed named events, instance preservation, container providers, transaction ordering, queue acknowledgement, adapters and migration compatibility.

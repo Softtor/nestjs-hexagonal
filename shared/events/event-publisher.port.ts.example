@@ -1,0 +1,28 @@
+import type { Observable } from 'rxjs';
+
+export const EVENT_PUBLISHER_TOKEN = Symbol('EventPublisherPort');
+export const EVENT_DISPATCHER_TOKEN = Symbol('EventDispatcher');
+
+export interface PublicationMetadata {
+  readonly name: string;
+  readonly eventId: string;
+  readonly occurredAt: Date;
+  readonly key?: string;
+}
+
+/** Normalized application request. Transport envelopes and SDKs belong to adapters. */
+export type EventPublication = PublicationMetadata & (
+  | { readonly kind: 'named'; readonly payload: unknown }
+  | { readonly kind: 'instance'; readonly event: object }
+);
+
+export interface EventPublisherPort {
+  /** Success means what the adapter documents. Observable returns MUST complete. */
+  publish(publication: EventPublication): void | Promise<unknown> | Observable<unknown>;
+}
+
+/** Structural capability, implemented by a pure domain entity without importing RxJS. */
+export interface EventSource {
+  getUncommittedEvents(): readonly object[];
+  acknowledgeEvent(event: object): void;
+}

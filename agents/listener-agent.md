@@ -87,3 +87,7 @@ After completion, report:
 - Test: file path, passing
 - Module: where registered
 - Checker: `nestjs-hexagonal-check` result on the created files (or "CLI not installed")
+
+## Dispatcher contract
+
+Follow the [fluent dispatcher reference](../skills/application/references/event-dispatcher.md). Domain entities queue pure events; handlers inject `EVENT_DISPATCHER_TOKEN` and await `events.from(entity).publish()` after the actual transaction commit. Repositories and use cases never publish. Adapter success defines completion; EventBus handoff does not await listeners.

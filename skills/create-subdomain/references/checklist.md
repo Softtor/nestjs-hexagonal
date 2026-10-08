@@ -6,7 +6,7 @@ Run this checklist before declaring the bounded context complete. Every item mus
 
 ## Domain Layer
 
-- [ ] Entity class extends `Entity<Props>` (which extends `AggregateRoot` from `@nestjs/cqrs`)
+- [ ] Entity class extends pure `Entity<Props>`
 - [ ] Entity has `private constructor` — instantiation only via `static create()` and `static restore()`
 - [ ] `create()` calls `this.apply(new <Name>CreatedEvent(...))` — always, without exception
 - [ ] `restore()` does NOT call `this.apply()` — no events emitted on hydration
@@ -20,7 +20,7 @@ Run this checklist before declaring the bounded context complete. Every item mus
 - [ ] Enum VOs provide named static factories (`static pending()`) — callers never pass raw strings directly
 - [ ] Repository interface lives in `domain/repositories/` with namespace, TOKEN symbol, and interface only
 - [ ] Repository interface has no `@Injectable` or Prisma imports
-- [ ] Domain events implement `IEvent` from `@nestjs/cqrs`
+- [ ] Domain events carry `eventName`, `aggregateId`, `eventId` and `occurredOn` without framework imports
 - [ ] Domain events contain all data handlers will need (no re-fetching in handlers)
 - [ ] Data builders exist in `domain/testing/helpers/` with faker defaults for every required field
 - [ ] Entity unit tests pass: `<runner> test` scoped to `domain/entities`
@@ -32,9 +32,9 @@ Run this checklist before declaring the bounded context complete. Every item mus
 
 - [ ] Correct pattern chosen (A, B, or C) and applied consistently across all operations
 - [ ] Pattern A use cases: no `@Injectable`, no NestJS imports, export `TOKEN = Symbol(...)`
-- [ ] Pattern B/C handlers: use `@CommandHandler`/`@QueryHandler`, inject `EventPublisher`
-- [ ] `EventPublisher` is injected ONLY in CQRS handlers — never in use cases, never in repositories
-- [ ] `publisher.mergeObjectContext(entity)` and `entity.commit()` called in handler, after `repo.save()`
+- [ ] Pattern B/C handlers: use `@CommandHandler`/`@QueryHandler`, inject `EventDispatcher`
+- [ ] `EventDispatcher` is injected ONLY in CQRS handlers — never in use cases, never in repositories
+- [ ] `await events.from(entity).publish()` called in handler, after `repo.save()` and the actual transaction commit
 - [ ] Write operations return `void` or `{ id: string }` — never the full entity or aggregate
 - [ ] DTOs use namespace pattern: `namespace <Op><Context>Dto { Input; Output }`
 - [ ] No `class-validator` decorators in DTOs (`application/dtos/`) — TypeScript interfaces only
@@ -50,7 +50,7 @@ Run this checklist before declaring the bounded context complete. Every item mus
 - [ ] `save()` in Prisma repository checks for existence before deciding create vs update (no bare `upsert`)
 - [ ] `search()` always scopes by `organizationId` (or tenant identifier) in `whereClause`
 - [ ] `delete()` scopes by both `id` AND the tenant identifier
-- [ ] Prisma repository has NO event dispatch — no `entity.commit()`, no `EventBus.publish()`
+- [ ] Prisma repository has NO event dispatch — no `await events.from(entity).publish()`, no `EventBus.publish()`
 - [ ] Model mapper `toEntity()` calls `Entity.restore()` — NEVER `Entity.create()`
 - [ ] Model mapper `toModel()` returns plain data (no entity methods or prototype chain)
 - [ ] In-memory repository exists in `infrastructure/database/in-memory/repositories/`

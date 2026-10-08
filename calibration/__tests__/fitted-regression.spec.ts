@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readRulebookFile } from '../../scripts/lib/compose.ts';
-import { loadFitted } from '../../scripts/lib/decide.ts';
+import { decide, loadFitted } from '../../scripts/lib/decide.ts';
 import { DENY_MIN_PRECISION, metricsAtCut } from '../lib/metrics.ts';
 import { readAllResults, type ResultRecord } from '../lib/results.ts';
 
@@ -31,11 +31,28 @@ describe.skipIf(!hasResults)(`fitted regression for ${PIN}`, () => {
     }
   });
 
-  it('keeps precision >= 0.95 at the fitted deny cut of every rule that denies', () => {
+  it('abstains when the shipped calibration belongs to an older rulebook', () => {
+    if (fitted === null) return;
+    if (fitted.rulebookVersion === undefined || fitted.rulebookVersion === rulebook.version) {
+      expect(loaded.status).toBe('ok');
+      return;
+    }
+    expect(loaded.status).toBe('mismatch');
+    if (loaded.status !== 'mismatch') throw new Error('expected a rulebook version mismatch');
+    expect(loaded.reason).toContain(`file rulebook ${fitted.rulebookVersion} != ${rulebook.version}`);
+    for (const rule of rulebook.rules.filter((rule) => rule.question?.type === 'noul')) {
+      const outcome = decide(rule, { type: 'noul', noul: 1 }, undefined, { uncalibrated: true });
+      expect(outcome.decision, rule.id).toBe('uncalibrated');
+      expect(outcome.calibrated, rule.id).toBe(false);
+      expect(outcome.thresholds.deny, rule.id).toBeUndefined();
+    }
+  });
+
+  it('keeps historical precision >= 0.95 at the fitted deny cut of every rule that denies', () => {
     if (fitted === null) {
       return;
     }
-    expect(loaded.status).toBe('ok');
+    expect(loadFitted(FITTED_DIR, PIN, fitted.rulebookVersion).status).toBe('ok');
     expect(fitted.pin).toBe(PIN);
     for (const [ruleId, thresholds] of Object.entries(fitted.rules)) {
       if (thresholds.deny === undefined) {
