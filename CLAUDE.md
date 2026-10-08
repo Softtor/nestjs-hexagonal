@@ -94,18 +94,18 @@ The six pipeline agents get their rules from the `SubagentStart` slice, load the
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | `explore-agent` | Claude Haiku (`haiku`) | Read-only map of a module (prescan + minimal reads) |
-| `domain-agent` | **Claude Opus 5** | Domain modeling (entities, VOs, events) |
+| `domain-agent` | **Claude Opus 5.5** | Domain modeling (entities, VOs, events) |
 | `application-agent` | Claude Sonnet 5 | Use cases, handlers, DTOs, ports |
 | `infrastructure-agent` | Claude Sonnet 5 | Repos, module wiring, adapters |
 | `presentation-agent` | Claude Sonnet 5 | Controllers, request DTOs, Swagger |
 | `broadcasting-agent` | Claude Sonnet 5 | WS gateway backend + frontend consumption (Next.js/React) |
-| `architecture-reviewer` | **Claude Opus 5** | Over-engineering + code smell detection |
-| `event-debug-agent` | **Claude Opus 5** | Debug event chain: entity -> dispatch -> WS -> frontend |
+| `architecture-reviewer` | **Claude Opus 5.5** | Over-engineering + code smell detection |
+| `event-debug-agent` | **Claude Opus 5.5** | Debug event chain: entity -> dispatch -> WS -> frontend |
 | `listener-agent` | Claude Sonnet 5 | Create event listeners (same-BC, cross-BC, bridge) |
 
 ## Workflow Order
 
-Domain (Opus 5) -> Application (Sonnet 5) -> Infrastructure (Sonnet 5) -> Presentation (Sonnet 5)
+Domain (Opus 5.5) -> Application (Sonnet 5) -> Infrastructure (Sonnet 5) -> Presentation (Sonnet 5)
 
 Each layer follows TDD: write test first, then implement.
 

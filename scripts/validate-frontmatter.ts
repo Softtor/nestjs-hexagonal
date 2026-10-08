@@ -3,7 +3,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 
-export const AGENT_MODELS = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'haiku'] as const;
+export const AGENT_MODELS = ['claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'haiku'] as const;
 const PLUGIN_PREFIX = 'nestjs-hexagonal:';
 const ROOT_DOCS = ['README.md', 'CLAUDE.md', 'CONTRIBUTING.md', 'ROADMAP.md', 'CHANGELOG.md'];
 

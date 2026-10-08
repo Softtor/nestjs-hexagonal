@@ -13,7 +13,7 @@ function write(root: string, path: string, content: string): void {
 
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'hex-fm-'));
-  write(root, 'agents/domain-agent.md', '---\nname: domain-agent\ndescription: Domain agent\nmodel: claude-opus-5\ntools:\n  - Read\n---\nLoad `nestjs-hexagonal:domain`. See [checklist](../skills/domain/references/checklist.md).\n');
+  write(root, 'agents/domain-agent.md', '---\nname: domain-agent\ndescription: Domain agent\nmodel: claude-opus-5-5\ntools:\n  - Read\n---\nLoad `nestjs-hexagonal:domain`. See [checklist](../skills/domain/references/checklist.md).\n');
   write(root, 'skills/domain/SKILL.md', '---\nname: domain\ndescription: Domain skill\n---\nDispatch `nestjs-hexagonal:domain-agent`.\n```\nnestjs-hexagonal:<layer> is a placeholder\n```\n');
   write(root, 'skills/domain/references/checklist.md', '# Checklist\n[skill](../SKILL.md) [site](https://example.com) [anchor](#top) [mail](mailto:a@b.c)\n');
   write(root, 'README.md', '# Readme\n[CLAUDE](CLAUDE.md) [skill](skills/domain/SKILL.md#domain-layer)\n');
@@ -35,7 +35,7 @@ describe('validatePlugin', () => {
   });
 
   it('lists the allowed agent models', () => {
-    expect(AGENT_MODELS).toEqual(['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'haiku']);
+    expect(AGENT_MODELS).toEqual(['claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'haiku']);
   });
 
   it('rejects an agent without name, description, an allowed model or tools', () => {

@@ -12,4 +12,4 @@
 
 - [ ] Skills / agents / examples updated as needed
 - [ ] README or ROADMAP updated if user-facing
-- [ ] Model pins remain `claude-opus-5` / `claude-sonnet-5` unless intentionally changed
+- [ ] Model pins remain `claude-opus-5-5` / `claude-sonnet-5` unless intentionally changed

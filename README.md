@@ -70,18 +70,18 @@ The six pipeline agents are rulebook-driven: the rules arrive as a slice injecte
 | Agent | Model | Purpose |
 |---|---|---|
 | `explore-agent` | Claude Haiku (`haiku` alias) | Read-only map of an existing module: `prescan` plus the minimum reads; runs before Opus/Sonnet touch anything |
-| `domain-agent` | **Claude Opus 5** (`claude-opus-5`) | Domain modeling — entities, VOs, events, repo interfaces |
+| `domain-agent` | **Claude Opus 5.5** (`claude-opus-5-5`) | Domain modeling — entities, VOs, events, repo interfaces |
 | `application-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Use cases, CQRS handlers, DTOs, ports |
 | `infrastructure-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Prisma repos, module wiring, adapters |
 | `presentation-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Controllers, request DTOs, Swagger |
 | `broadcasting-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | WS gateway (backend) + event consumption (Next.js/React frontend) |
 | `listener-agent` | Claude Sonnet 5 (`claude-sonnet-5`) | Creates event listeners (same-BC projections, cross-BC reactions, bridge) |
-| `architecture-reviewer` | **Claude Opus 5** (`claude-opus-5`) | Consumes the checker JSON; judges `uncertain`/`uncalibrated`/undecided semantic outcomes, WARN semantic findings and cross-file concerns (multi-hop tenant scoping, empty directories, small event tables) |
-| `event-debug-agent` | **Claude Opus 5** (`claude-opus-5`) | Debug full event chain: entity -> dispatch -> WS -> frontend |
+| `architecture-reviewer` | **Claude Opus 5.5** (`claude-opus-5-5`) | Consumes the checker JSON; judges `uncertain`/`uncalibrated`/undecided semantic outcomes, WARN semantic findings and cross-file concerns (multi-hop tenant scoping, empty directories, small event tables) |
+| `event-debug-agent` | **Claude Opus 5.5** (`claude-opus-5-5`) | Debug full event chain: entity -> dispatch -> WS -> frontend |
 
-**Why Opus 5 for domain, review, and debug?** Domain modeling requires critical decisions. Review requires deep judgment to distinguish necessary from unnecessary complexity. Event debugging requires tracing across 6 layers systematically.
+**Why Opus 5.5 for domain, review, and debug?** Domain modeling requires critical decisions. Review requires deep judgment to distinguish necessary from unnecessary complexity. Event debugging requires tracing across 6 layers systematically.
 
-**Model pins:** Agents use full IDs (`claude-opus-5`, `claude-sonnet-5`) so resolution does not fall back to legacy 4.x aliases on some providers. Requires Claude Code **v2.1.219+** (Opus 5) and **v2.1.197+** (Sonnet 5) — run `claude update` if needed. `explore-agent` uses the `haiku` alias on purpose: it is read-only, any Haiku generation does the job, and the alias follows whatever Haiku the account serves. The `frontmatter` CI job accepts exactly `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5` and `haiku`.
+**Model pins:** Agents use full IDs (`claude-opus-5-5`, `claude-sonnet-5`) so resolution does not fall back to legacy 4.x aliases on some providers. Requires Claude Code **v2.1.280+** (Opus 5.5) and **v2.1.197+** (Sonnet 5) — run `claude update` if needed. `explore-agent` uses the `haiku` alias on purpose: it is read-only, any Haiku generation does the job, and the alias follows whatever Haiku the account serves. The `frontmatter` CI job accepts exactly `claude-opus-5-5`, `claude-sonnet-5`, `claude-haiku-4-5` and `haiku`.
 
 ## Architecture Overview
 
