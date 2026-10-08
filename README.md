@@ -168,7 +168,7 @@ Subcommands:
 
 ### Project rulebook
 
-A project opts in by creating `.claude/rulebook.yaml` (or pointing `NESTJS_HEXAGONAL_RULEBOOK` at a file). It extends one or more plugin rulebooks, adds rules under its own namespace and overrides inherited rules by id (`disabled`, `severity`, `scope`, `thresholds`). `rulebooks/project.example.rulebook.yaml` is a complete example.
+A project opts in by creating `.claude/rulebook.yaml` (or pointing `NESTJS_HEXAGONAL_RULEBOOK` at a file). It extends one or more plugin rulebooks, adds rules under its own namespace and overrides inherited rules by id (`disabled`, `severity`, `scope`, `thresholds`, and `check.unlessInEnclosingDeclaration` for regex rules). `rulebooks/project.example.rulebook.yaml` is a complete example.
 
 ```yaml
 $schema: nestjs-hexagonal/rulebook@1
@@ -181,6 +181,8 @@ rules: []
 overrides:
   - { id: softtor/identifiers-english, scope: { exclude: ['src/legacy/**'] } }
 ```
+
+For `softtor/tenant-scoped-query` in a project where Postgres RLS enforces tenant isolation, `check.unlessInEnclosingDeclaration` replaces the accepted scope regex: list the aggregate ids that are already tenant-bound (`organizationId|conversationId|subscriptionId`) and, for RLS-protected models, the `findUnique({ where: { id } })` shape; the recipe is in `rulebooks/project.example.rulebook.yaml`. Methods with no declared scope still fail, and projects without the override keep the base behaviour.
 
 The `sha256` stamp pins the content of the base rulebook the project was calibrated against. When the installed copy differs, the CLI still runs but reports `rulebook-mismatch` and marks the run `uncalibrated`; a stale stamp never blocks.
 

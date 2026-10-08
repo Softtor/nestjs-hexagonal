@@ -38,3 +38,10 @@ overrides:
     severity: WARN
     scope:
       exclude: ['src/legacy/**']
+  # Tenant isolation enforced by Postgres RLS (issue #15): a method that queries
+  # by an aggregate id already bound to the tenant, or a findUnique by id on an
+  # RLS-protected model, is not a leak. The regex replaces the base one and is
+  # tested against the whole enclosing method; methods with no scope still fail.
+  - id: softtor/tenant-scoped-query
+    check:
+      unlessInEnclosingDeclaration: '\b(?:organizationId|conversationId|subscriptionId)\b|\bprisma\.(?:conversation|message)\.findUnique\s*\(\s*\{\s*where:\s*\{\s*id\s*\}'

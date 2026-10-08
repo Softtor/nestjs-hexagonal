@@ -143,6 +143,12 @@ function applyOverride(rule: Rule, override: Override): Rule | null {
   if (override.thresholds) {
     next.thresholds = mergeThresholds(rule, override.thresholds);
   }
+  if (override.check) {
+    if (rule.check?.kind !== 'regex') {
+      throw new RulebookCompositionError(`override for '${rule.id}': check.unlessInEnclosingDeclaration only applies to regex checks`);
+    }
+    next.check = { ...rule.check, unlessInEnclosingDeclaration: override.check.unlessInEnclosingDeclaration };
+  }
   return next;
 }
 
