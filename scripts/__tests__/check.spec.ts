@@ -248,7 +248,7 @@ describe('runCli', () => {
     expect(fromSubdir.report.findings.map((finding) => finding.ruleId)).toEqual(fromRoot.report.findings.map((finding) => finding.ruleId));
   });
 
-  it('warns on stderr when --strict runs over zero eligible files', async () => {
+  it('exits 0 for an empty --diff and 2 for an empty --files under --strict', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'hex-git-empty-'));
     const git = (...args: string[]): string => execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
     git('init', '-q', '-b', 'main');
@@ -264,9 +264,9 @@ describe('runCli', () => {
   });
 
   describe('--files that resolves nothing', () => {
-    const GOOD = 'calibration/golden/hex/domain-no-nest-decorators/bad/domain';
-    const goodFile = (): string => {
-      const first = listFiles(join(PLUGIN_ROOT, GOOD))[0];
+    const BAD_FIXTURE_DIR = 'calibration/golden/hex/domain-no-nest-decorators/bad/domain';
+    const failingFile = (): string => {
+      const first = listFiles(join(PLUGIN_ROOT, BAD_FIXTURE_DIR))[0];
       if (first === undefined) {
         throw new Error('missing golden fixture');
       }
@@ -277,6 +277,8 @@ describe('runCli', () => {
       const { code, io } = await run(['--rulebook', 'hexagonal', '--files', 'nao/existe.ts', '--strict']);
       expect(code).toBe(2);
       expect(io.err.join('')).toContain('nao/existe.ts');
+      expect(io.err.join('')).toContain('--help');
+      expect(io.err.join('')).not.toContain('Usage:');
     });
 
     it('exits 2 for a missing literal path without --strict', async () => {
@@ -285,13 +287,13 @@ describe('runCli', () => {
     });
 
     it('exits 2 for a single argument holding several paths separated by a space', async () => {
-      const { code, io } = await run(['--rulebook', 'hexagonal', '--files', `${goodFile()} ${goodFile()}`, '--strict']);
+      const { code, io } = await run(['--rulebook', 'hexagonal', '--files', `${failingFile()} ${failingFile()}`, '--strict']);
       expect(code).toBe(2);
       expect(io.err.join('')).toContain('no such file or directory');
     });
 
     it('exits 2 naming every missing path even when another path exists', async () => {
-      const { code, io } = await run(['--rulebook', 'hexagonal', '--files', 'nao/existe.ts', goodFile(), 'tambem/nao.ts', '--strict']);
+      const { code, io } = await run(['--rulebook', 'hexagonal', '--files', 'nao/existe.ts', failingFile(), 'tambem/nao.ts', '--strict']);
       expect(code).toBe(2);
       expect(io.err.join('')).toContain('nao/existe.ts');
       expect(io.err.join('')).toContain('tambem/nao.ts');
@@ -307,7 +309,7 @@ describe('runCli', () => {
     });
 
     it('keeps exit 1 for a valid file with a FAIL under --strict', async () => {
-      const { code } = await run(['--rulebook', 'hexagonal', '--classes', 'static', '--files', goodFile(), '--strict']);
+      const { code } = await run(['--rulebook', 'hexagonal', '--classes', 'static', '--files', failingFile(), '--strict']);
       expect(code).toBe(1);
     });
 

@@ -149,7 +149,7 @@ bunx nestjs-hexagonal-check stamp hexagonal softtor-conventions          # exten
 |---|---|
 | `--rulebook <path\|id>` | rulebook to run; an id resolves to `rulebooks/<id>.rulebook.yaml` in the plugin (`hexagonal`, `softtor-conventions`) |
 | `--project-rulebook <path>` | project rulebook; defaults to `$NESTJS_HEXAGONAL_RULEBOOK`, then `$CLAUDE_PROJECT_DIR/.claude/rulebook.yaml` |
-| `--files <glob\|dir\|file...>` / `--diff <base>` | files to check (globs, directories or files relative to the current directory) or the files changed since `<base>` (`git diff --relative` plus untracked files). With `--files`, a literal path that does not exist (a typo, a deleted file, or one argument holding several space-separated paths) exits 2 and is named on stderr, with or without `--strict` |
+| `--files <glob\|dir\|file...>` / `--diff <base>` | files to check (globs, directories or files relative to the current directory) or the files changed since `<base>` (`git diff --relative` plus untracked files). With `--files`, a literal path that does not exist (a typo, a deleted file, or one argument holding several space-separated paths when none of them is a glob) exits 2 and is named on stderr, with or without `--strict` |
 | `--classes static[,semantic,runtime]` | rule classes to run; `semantic` needs `TYPESAFE_API_KEY`, `runtime` is still inert |
 | `--format json\|text` | output format |
 | `--strict` | exit 1 when a static FAIL or a semantic `deny` exists; exit 2 when `--files` resolves to zero files (`--diff` with no changed files still exits 0) |

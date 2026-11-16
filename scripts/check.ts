@@ -7,7 +7,7 @@ import { RulebookCompositionError, readRulebookFile, rulebookPathForId, semantic
 import { FittedFileError, loadFitted, type FittedFile } from './lib/decide.ts';
 import { readHookLogs, summarizeHookLogs } from './lib/hook-log.ts';
 import { createJevClient, type FetchLike } from './lib/jev-client.ts';
-import { changedFilesSince, expandGlobs, missingLiterals, projectSources, readSources } from './lib/project-files.ts';
+import { changedFilesSince, expandGlobs, missingLiterals, missingPathsMessage, projectSources, readSources } from './lib/project-files.ts';
 import { pluginDataPaths } from './lib/plugin-data-paths.ts';
 import { runPrescan } from './prescan.ts';
 import { RulebookNotFoundError, loadProjectRulebook } from './lib/project-rulebook.ts';
@@ -45,6 +45,9 @@ interface ParsedArgs {
 }
 
 class UsageError extends Error {}
+
+/** Bad `--files` input: reported without the full usage text. */
+class MissingPathError extends UsageError {}
 
 const USAGE = `Usage: nestjs-hexagonal-check [options]
        nestjs-hexagonal-check export-logs --since <date> [--out <file>]
@@ -498,7 +501,7 @@ export async function runCli(argv: string[], io: CliIo, options: CliOptions): Pr
     if (args.diff === undefined) {
       const missing = missingLiterals(args.files, options.cwd);
       if (missing.length > 0) {
-        throw new UsageError(missing.map((path) => `--files: ${path}: no such file or directory`).join('\n'));
+        throw new MissingPathError(missingPathsMessage(missing));
       }
     }
     const paths = args.diff !== undefined ? changedFilesSince(args.diff, options.cwd) : expandGlobs(args.files, options.cwd);
@@ -521,6 +524,10 @@ export async function runCli(argv: string[], io: CliIo, options: CliOptions): Pr
     io.stdout(args.format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : formatText(report));
     return exitCode(report, args);
   } catch (error) {
+    if (error instanceof MissingPathError) {
+      io.stderr(`${error.message}\nRun with --help for usage.\n`);
+      return 2;
+    }
     if (error instanceof UsageError || error instanceof RulebookNotFoundError) {
       io.stderr(`${error.message}\n${USAGE}`);
       return 2;

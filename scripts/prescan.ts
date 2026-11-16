@@ -6,7 +6,7 @@ import { apiKey as resolveApiKey } from './lib/api-key.ts';
 import { readRulebookFile, rulebookPathForId } from './lib/compose.ts';
 import { createJevClient, type JevQuestion } from './lib/jev-client.ts';
 import { pluginDataPaths } from './lib/plugin-data-paths.ts';
-import { changedFilesSince, expandGlobs, readSources } from './lib/project-files.ts';
+import { changedFilesSince, expandGlobs, missingLiterals, missingPathsMessage, readSources } from './lib/project-files.ts';
 import { normalizePath } from './lib/scope.ts';
 import { runPool } from './lib/semantic-engine.ts';
 import { truncateToTokens } from './lib/state-builder.ts';
@@ -301,6 +301,13 @@ export async function runPrescan(argv: string[], io: CliIo, options: CliOptions)
     const message = error instanceof Error ? error.message : String(error);
     io.stderr(`${message === '' ? '' : `${message}\n`}${PRESCAN_USAGE}`);
     return message === '' ? 0 : 2;
+  }
+  if (args.diff === undefined) {
+    const missing = missingLiterals(args.files, options.cwd);
+    if (missing.length > 0) {
+      io.stderr(`${missingPathsMessage(missing)}\nRun with --help for usage.\n`);
+      return 2;
+    }
   }
   const paths = args.diff !== undefined ? changedFilesSince(args.diff, options.cwd) : expandGlobs(args.files, options.cwd);
   if (paths === null) {

@@ -4,9 +4,13 @@ All notable changes to this plugin. Versions follow `package.json`, `.claude-plu
 
 ## Unreleased
 
+### Changed
+
+- `--files` with a glob that matches nothing now exits 2 under `--strict` (it used to warn and exit 0). Without `--strict` the "no files matched" warning and exit 0 stay. Anyone who runs with an empty glob on purpose must drop `--strict` or guard the call.
+
 ### Fixed
 
-- `nestjs-hexagonal-check --files` no longer exits 0 without checking anything: a literal path that does not exist (including one argument with several space-separated paths) exits 2 naming the path, with or without `--strict`, and `--strict` with a `--files` that matches no file exits 2. Without `--strict` the "no files matched" warning and exit 0 stay, `--diff` with no changed files still exits 0, and `NESTJS_HEXAGONAL_DISABLE=1` and the hooks are unchanged (softtor-crm/crm#2705).
+- `nestjs-hexagonal-check --files` no longer exits 0 without checking anything: a literal path that does not exist (including one argument with several space-separated paths, as long as it holds no `*`, `?` or `{`) exits 2 naming the path, with or without `--strict`, `prescan --files` does the same for a missing literal path, and the error is printed without the full usage text. `--diff` with no changed files still exits 0, and `NESTJS_HEXAGONAL_DISABLE=1` and the hooks are unchanged (softtor-crm/crm#2705).
 
 ## 1.4.0 — 2026-10-08
 

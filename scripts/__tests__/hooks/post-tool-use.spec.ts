@@ -1,7 +1,7 @@
 import '../helpers/no-network.ts';
 import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readRulebookFile } from '../../lib/compose.ts';
 import type { FetchLike } from '../../lib/jev-client.ts';
 import { ADVISORY_BYTE_CAP, handler, MAIN_THREAD_AGENT_ID } from '../../hooks/post-tool-use.ts';
@@ -60,11 +60,17 @@ describe('post-tool-use hook', () => {
     expect(readLog(project).map((entry) => entry.decision)).toEqual(['silent', 'silent']);
   });
 
-  it('stays silent for an Edit on a path that does not exist (a hook path is never a usage error)', async () => {
+  it('never reaches the --files path validation: a missing path stays silent and hooks do not import missingLiterals/expandGlobs', async () => {
     const project = makeProject();
     const input = { ...postInput(project, 'src/orders/domain/gone.ts', 'x', { id: 'a', type: DOMAIN_AGENT }), tool_name: 'Edit' };
     const result = await runHook('post-tool-use', handler, input, context(project));
     expect(result.stdout).toBe('');
+    const hooksDir = join(PLUGIN_ROOT, 'scripts', 'hooks');
+    const sources = readdirSync(hooksDir, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith('.ts'));
+    expect(sources.length).toBeGreaterThan(0);
+    for (const entry of sources) {
+      expect(readFileSync(join(entry.parentPath, entry.name), 'utf8'), entry.name).not.toMatch(/missingLiterals|missingPathsMessage|expandGlobs/);
+    }
   });
 
   it('skips paths outside the project and files without a scoped rule (still recording the path)', async () => {
