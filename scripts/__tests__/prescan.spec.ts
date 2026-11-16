@@ -154,6 +154,12 @@ describe('prescan on the example bounded context', () => {
     expect(text).toContain('2 file(s)');
   });
 
+  it('exits 2 naming a missing literal path in --files', async () => {
+    const { code, io } = await run(['--files', 'nao/existe.ts']);
+    expect(code).toBe(2);
+    expect(io.err.join('')).toContain('nao/existe.ts');
+  });
+
   it('warns on stderr when no file matched', async () => {
     const { code, report, io } = await runJson(['--files', 'examples/**/*.nothing']);
     expect(code).toBe(0);

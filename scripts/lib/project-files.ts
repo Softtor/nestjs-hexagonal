@@ -112,10 +112,25 @@ function walk(dir: string, base: string, out: string[]): void {
   }
 }
 
+/** True when `pattern` holds a glob character; everything else is a literal path. */
+export function isGlob(pattern: string): boolean {
+  return /[*?{]/.test(pattern);
+}
+
+/** Error text naming every missing `--files` path. */
+export function missingPathsMessage(missing: string[]): string {
+  return missing.map((path) => `--files: ${path}: no such file or directory`).join('\n');
+}
+
+/** Literal (glob-free) entries of `globs` that do not exist under `cwd`. */
+export function missingLiterals(globs: string[], cwd: string): string[] {
+  return globs.filter((pattern) => !isGlob(pattern) && !existsSync(resolve(cwd, pattern)));
+}
+
 /** Expands globs, directories and literal paths into sorted paths relative to `cwd`. */
 export function expandGlobs(globs: string[], cwd: string): string[] {
-  const literal = globs.filter((pattern) => !/[*?{]/.test(pattern));
-  const patterns = globs.filter((pattern) => /[*?{]/.test(pattern));
+  const literal = globs.filter((pattern) => !isGlob(pattern));
+  const patterns = globs.filter(isGlob);
   const selected = new Set<string>();
 
   for (const path of literal) {
