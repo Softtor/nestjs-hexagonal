@@ -260,6 +260,61 @@ describe('runCli', () => {
     expect(io.err.join('')).toContain('no files');
     const globs = await run(['--rulebook', 'hexagonal', '--files', 'nothing/**', '--strict'], {}, dir);
     expect(globs.io.err.join('')).toContain('no files');
+    expect(globs.code).toBe(2);
+  });
+
+  describe('--files that resolves nothing', () => {
+    const GOOD = 'calibration/golden/hex/domain-no-nest-decorators/bad/domain';
+    const goodFile = (): string => {
+      const first = listFiles(join(PLUGIN_ROOT, GOOD))[0];
+      if (first === undefined) {
+        throw new Error('missing golden fixture');
+      }
+      return first.slice(PLUGIN_ROOT.length + 1);
+    };
+
+    it('exits 2 and names a missing literal path under --strict', async () => {
+      const { code, io } = await run(['--rulebook', 'hexagonal', '--files', 'nao/existe.ts', '--strict']);
+      expect(code).toBe(2);
+      expect(io.err.join('')).toContain('nao/existe.ts');
+    });
+
+    it('exits 2 for a missing literal path without --strict', async () => {
+      const { code } = await run(['--rulebook', 'hexagonal', '--files', 'nao/existe.ts']);
+      expect(code).toBe(2);
+    });
+
+    it('exits 2 for a single argument holding several paths separated by a space', async () => {
+      const { code, io } = await run(['--rulebook', 'hexagonal', '--files', `${goodFile()} ${goodFile()}`, '--strict']);
+      expect(code).toBe(2);
+      expect(io.err.join('')).toContain('no such file or directory');
+    });
+
+    it('exits 2 naming every missing path even when another path exists', async () => {
+      const { code, io } = await run(['--rulebook', 'hexagonal', '--files', 'nao/existe.ts', goodFile(), 'tambem/nao.ts', '--strict']);
+      expect(code).toBe(2);
+      expect(io.err.join('')).toContain('nao/existe.ts');
+      expect(io.err.join('')).toContain('tambem/nao.ts');
+    });
+
+    it('exits 2 under --strict when globs match nothing, and keeps the warning with exit 0 otherwise', async () => {
+      const strict = await run(['--rulebook', 'hexagonal', '--files', 'nothing/**', '--strict']);
+      expect(strict.code).toBe(2);
+      expect(strict.io.err.join('')).toContain('no files matched');
+      const lenient = await run(['--rulebook', 'hexagonal', '--files', 'nothing/**']);
+      expect(lenient.code).toBe(0);
+      expect(lenient.io.err.join('')).toContain('no files matched');
+    });
+
+    it('keeps exit 1 for a valid file with a FAIL under --strict', async () => {
+      const { code } = await run(['--rulebook', 'hexagonal', '--classes', 'static', '--files', goodFile(), '--strict']);
+      expect(code).toBe(1);
+    });
+
+    it('exits 0 when NESTJS_HEXAGONAL_DISABLE=1 even for a missing path', async () => {
+      const { code } = await run(['--rulebook', 'hexagonal', '--files', 'nao/existe.ts', '--strict'], { NESTJS_HEXAGONAL_DISABLE: '1' });
+      expect(code).toBe(0);
+    });
   });
 
   it('counts over the git tree when --diff narrows the checked set', async () => {

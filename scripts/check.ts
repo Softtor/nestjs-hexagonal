@@ -7,7 +7,7 @@ import { RulebookCompositionError, readRulebookFile, rulebookPathForId, semantic
 import { FittedFileError, loadFitted, type FittedFile } from './lib/decide.ts';
 import { readHookLogs, summarizeHookLogs } from './lib/hook-log.ts';
 import { createJevClient, type FetchLike } from './lib/jev-client.ts';
-import { changedFilesSince, expandGlobs, projectSources, readSources } from './lib/project-files.ts';
+import { changedFilesSince, expandGlobs, missingLiterals, projectSources, readSources } from './lib/project-files.ts';
 import { pluginDataPaths } from './lib/plugin-data-paths.ts';
 import { runPrescan } from './prescan.ts';
 import { RulebookNotFoundError, loadProjectRulebook } from './lib/project-rulebook.ts';
@@ -53,11 +53,11 @@ const USAGE = `Usage: nestjs-hexagonal-check [options]
 
   --rulebook <path|id>        rulebook to run; an id resolves to <plugin>/rulebooks/<id>.rulebook.yaml
   --project-rulebook <path>   project rulebook (default: $NESTJS_HEXAGONAL_RULEBOOK or $CLAUDE_PROJECT_DIR/.claude/rulebook.yaml)
-  --files <glob...>           files to check, as globs relative to the current directory
+  --files <glob...>           files to check, as globs relative to the current directory; a missing literal path exits 2
   --diff <base>               check the files changed since <base> (git diff --name-only <base>)
   --classes <list>            comma-separated rule classes to run (default: static); semantic needs TYPESAFE_API_KEY
   --format json|text          output format (default: text)
-  --strict                    exit 1 when a static FAIL or a semantic deny exists
+  --strict                    exit 1 when a static FAIL or a semantic deny exists; exit 2 when --files matches nothing (--diff with no changes exits 0)
   --fail-on-uncertain         with --strict, exit 3 when a semantic answer is uncertain or uncalibrated
   --explain                   list the rules applied to each file
   --help                      show this message
@@ -495,12 +495,21 @@ export async function runCli(argv: string[], io: CliIo, options: CliOptions): Pr
     if (args.files.length === 0 && args.diff === undefined) {
       throw new UsageError('pass --files <glob...> or --diff <base>');
     }
+    if (args.diff === undefined) {
+      const missing = missingLiterals(args.files, options.cwd);
+      if (missing.length > 0) {
+        throw new UsageError(missing.map((path) => `--files: ${path}: no such file or directory`).join('\n'));
+      }
+    }
     const paths = args.diff !== undefined ? changedFilesSince(args.diff, options.cwd) : expandGlobs(args.files, options.cwd);
     if (paths === null) {
       throw new UsageError(`--diff ${args.diff}: git is unavailable or ${options.cwd} is not inside a repository`);
     }
     const hunksByPath = args.diff !== undefined && args.classes.includes('semantic') ? changedHunks(args.diff, options.cwd) : {};
     const files = readSources(paths, options.cwd);
+    if (files.length === 0 && args.diff === undefined && args.strict) {
+      throw new UsageError(`no files matched ${args.files.join(' ')}; nothing was checked`);
+    }
     if (files.length === 0) {
       io.stderr(`warning: no files matched ${args.diff !== undefined ? `--diff ${args.diff}` : args.files.join(' ')}; nothing was checked\n`);
     }

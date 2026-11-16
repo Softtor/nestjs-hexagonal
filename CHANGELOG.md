@@ -2,6 +2,12 @@
 
 All notable changes to this plugin. Versions follow `package.json`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, which CI keeps identical; a GitHub Release carries the same tag.
 
+## Unreleased
+
+### Fixed
+
+- `nestjs-hexagonal-check --files` no longer exits 0 without checking anything: a literal path that does not exist (including one argument with several space-separated paths) exits 2 naming the path, with or without `--strict`, and `--strict` with a `--files` that matches no file exits 2. Without `--strict` the "no files matched" warning and exit 0 stay, `--diff` with no changed files still exits 0, and `NESTJS_HEXAGONAL_DISABLE=1` and the hooks are unchanged (softtor-crm/crm#2705).
+
 ## 1.4.0 — 2026-10-08
 
 ### Added

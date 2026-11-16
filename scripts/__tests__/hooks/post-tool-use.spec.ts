@@ -60,6 +60,13 @@ describe('post-tool-use hook', () => {
     expect(readLog(project).map((entry) => entry.decision)).toEqual(['silent', 'silent']);
   });
 
+  it('stays silent for an Edit on a path that does not exist (a hook path is never a usage error)', async () => {
+    const project = makeProject();
+    const input = { ...postInput(project, 'src/orders/domain/gone.ts', 'x', { id: 'a', type: DOMAIN_AGENT }), tool_name: 'Edit' };
+    const result = await runHook('post-tool-use', handler, input, context(project));
+    expect(result.stdout).toBe('');
+  });
+
   it('skips paths outside the project and files without a scoped rule (still recording the path)', async () => {
     const project = makeProject();
     const outside = await runHook('post-tool-use', handler, { ...postInput(project, 'x.ts', 'x', null), tool_input: { file_path: '/elsewhere/x.ts', content: 'x' } }, context(project));

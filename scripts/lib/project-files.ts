@@ -112,6 +112,11 @@ function walk(dir: string, base: string, out: string[]): void {
   }
 }
 
+/** Literal (glob-free) entries of `globs` that do not exist under `cwd`. */
+export function missingLiterals(globs: string[], cwd: string): string[] {
+  return globs.filter((pattern) => !/[*?{]/.test(pattern) && !existsSync(resolve(cwd, pattern)));
+}
+
 /** Expands globs, directories and literal paths into sorted paths relative to `cwd`. */
 export function expandGlobs(globs: string[], cwd: string): string[] {
   const literal = globs.filter((pattern) => !/[*?{]/.test(pattern));
